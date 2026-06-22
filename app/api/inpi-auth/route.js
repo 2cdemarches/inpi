@@ -1,156 +1,179 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
 /**
- * Auth guichet-unique.inpi.fr via BEARER + REFRESH_TOKEN stockés dans Vercel.
- * Le BEARER expire en ~2h. On le renouvelle via le REFRESH_TOKEN.
- * Quand le REFRESH_TOKEN expire (semaines/mois), mettre à jour les vars Vercel.
+ * BEARER INPI expire en ~2h.
+ * On stocke le token rafraîchi dans Supabase pour persister entre les appels serverless.
+ * INPI_BEARER + INPI_REFRESH_TOKEN dans Vercel = valeurs initiales / de secours.
  */
 
 const GU = 'https://guichet-unique.inpi.fr';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-let cachedBearer  = null;
-let cachedRefresh = null;
-let bearerExp     = 0;
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
 
-// ── Renouvellement BEARER via REFRESH_TOKEN ───────────────────────────────────
-async function refreshBearer(bearer, refreshToken) {
-  // INPI utilise les cookies pour le refresh — envoyer les deux cookies
+// ── Lecture / écriture token dans Supabase ────────────────────────────────────
+async function getStoredToken() {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data } = await sb.from('tokens').select('value,expires_at').eq('key', 'inpi_bearer').single();
+  if (!data) return null;
+  // Valide si expire dans plus de 5 min
+  if (data.expires_at && new Date(data.expires_at) > new Date(Date.now() + 5 * 60 * 1000)) {
+    return data.value;
+  }
+  return null; // expiré
+}
+
+async function getStoredRefresh() {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data } = await sb.from('tokens').select('value').eq('key', 'inpi_refresh').single();
+  return data?.value ?? null;
+}
+
+async function storeTokens(bearer, refresh, expiresInMs = 100 * 60 * 1000) {
+  const sb = getSupabase();
+  if (!sb) return;
+  const expiresAt = new Date(Date.now() + expiresInMs).toISOString();
+  await sb.from('tokens').upsert({ key: 'inpi_bearer', value: bearer, expires_at: expiresAt, updated_at: new Date().toISOString() });
+  if (refresh) {
+    await sb.from('tokens').upsert({ key: 'inpi_refresh', value: refresh, expires_at: null, updated_at: new Date().toISOString() });
+  }
+}
+
+// ── Refresh du BEARER via le REFRESH_TOKEN ────────────────────────────────────
+async function tryRefresh(currentBearer, refreshToken) {
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'User-Agent': UA,
+    Referer: `${GU}/`,
+    Origin: GU,
+    Cookie: `BEARER=${currentBearer}; REFRESH_TOKEN=${refreshToken}`,
+  };
+
   const res = await fetch(`${GU}/api/token/refresh`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'User-Agent': UA,
-      Referer: `${GU}/`,
-      // Envoyer les cookies comme le ferait un vrai navigateur
-      Cookie: `BEARER=${bearer}; REFRESH_TOKEN=${refreshToken}`,
-    },
+    headers,
     body: JSON.stringify({ refresh_token: refreshToken }),
   }).catch(() => null);
 
   if (res) {
-    const cookies = parseCookies(getSetCookies(res));
-    if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
+    const setCookies = getSetCookies(res);
+    const cookies = parseCookies(setCookies);
+    if (cookies['BEARER']) {
+      return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
+    }
     if (res.ok) {
       const json = await res.json().catch(() => ({}));
-      const token = json.token ?? json.access_token ?? json.bearer ?? null;
+      const token = json.token ?? json.access_token ?? json.bearer;
       if (token) return { bearer: token, refresh: json.refresh_token ?? refreshToken };
     }
   }
-
-  // Fallback: essayer avec seulement le refresh token en cookie
-  const res2 = await fetch(`${GU}/api/token/refresh`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'User-Agent': UA,
-      Referer: `${GU}/`,
-      Cookie: `REFRESH_TOKEN=${refreshToken}`,
-    },
-    body: JSON.stringify({}),
-  }).catch(() => null);
-
-  if (res2) {
-    const cookies = parseCookies(getSetCookies(res2));
-    if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
-  }
-
   return null;
 }
 
-// ── Récupère BEARER valide ────────────────────────────────────────────────────
+// ── Obtenir un BEARER valide ──────────────────────────────────────────────────
 async function getBearer() {
-  // Utiliser le cache si encore valide
-  if (cachedBearer && Date.now() < bearerExp) return cachedBearer;
+  // 1. Chercher dans Supabase un token encore valide
+  const stored = await getStoredToken();
+  if (stored) return stored;
 
+  // 2. Récupérer les valeurs de base
   const envBearer  = process.env.INPI_BEARER;
   const envRefresh = process.env.INPI_REFRESH_TOKEN;
+  if (!envBearer) throw new Error('INPI_BEARER manquant dans Vercel → Settings → Environment Variables');
 
-  if (!envBearer) throw new Error('INPI_BEARER manquant dans les variables Vercel');
-
-  // Essayer de renouveler si on a un refresh token
-  if (envRefresh) {
-    const refreshToken = cachedRefresh ?? envRefresh;
-    const renewed = await refreshBearer(envBearer, refreshToken).catch(() => null);
+  // 3. Essayer de rafraîchir avec le refresh token (Supabase d'abord, puis env var)
+  const refreshToken = (await getStoredRefresh()) ?? envRefresh;
+  if (refreshToken) {
+    const renewed = await tryRefresh(envBearer, refreshToken).catch(() => null);
     if (renewed) {
-      cachedBearer  = renewed.bearer;
-      cachedRefresh = renewed.refresh;
-      bearerExp     = Date.now() + 100 * 60 * 1000;
-      return cachedBearer;
+      await storeTokens(renewed.bearer, renewed.refresh);
+      return renewed.bearer;
     }
   }
 
-  // Fallback : utiliser le BEARER de l'env var tel quel
-  cachedBearer = envBearer;
-  bearerExp    = Date.now() + 90 * 60 * 1000;
-  return cachedBearer;
+  // 4. Utiliser le BEARER de l'env var directement (peut fonctionner s'il vient d'être mis à jour)
+  // On le stocke aussi pour ne pas re-tester pendant 90min
+  await storeTokens(envBearer, envRefresh, 90 * 60 * 1000);
+  return envBearer;
 }
 
 // ── Appel API guichet-unique ──────────────────────────────────────────────────
-async function guCall(path) {
-  const bearer = await getBearer();
+async function guCall(path, bearerOverride) {
+  const bearer = bearerOverride ?? await getBearer();
 
   const res = await fetch(`${GU}${path}`, {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': UA,
-      Referer: `${GU}/`,
-      Cookie: `BEARER=${bearer}${cachedRefresh ? `; REFRESH_TOKEN=${cachedRefresh}` : ''}`,
-    },
+    headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${bearer}` },
   });
 
   if (res.status === 401) {
-    // Token expiré → forcer refresh
-    cachedBearer = null;
-    bearerExp    = 0;
-    const bearer2 = await getBearer();
-    const res2 = await fetch(`${GU}${path}`, {
-      headers: { Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${bearer2}` },
-    });
-    if (!res2.ok) throw new Error(`Token INPI expiré (${res2.status}). Reconnectez-vous sur guichet-unique.inpi.fr, copiez le cookie BEARER dans les DevTools (F12 → Application → Cookies) et mettez à jour INPI_BEARER + INPI_REFRESH_TOKEN dans Vercel → Settings → Environment Variables → Redeploy.`);
-    return res2.json();
+    // Token refusé — invalider le stockage et réessayer une fois
+    const sb = getSupabase();
+    if (sb) await sb.from('tokens').delete().eq('key', 'inpi_bearer');
+
+    const envBearer  = process.env.INPI_BEARER;
+    const envRefresh = process.env.INPI_REFRESH_TOKEN;
+    const refreshToken = (await getStoredRefresh()) ?? envRefresh;
+
+    if (refreshToken) {
+      const renewed = await tryRefresh(envBearer ?? '', refreshToken).catch(() => null);
+      if (renewed) {
+        await storeTokens(renewed.bearer, renewed.refresh);
+        return guCall(path, renewed.bearer);
+      }
+    }
+
+    throw new Error(
+      'Token INPI expiré. Reconnectez-vous sur guichet-unique.inpi.fr puis :\n' +
+      '1. F12 → Application → Cookies → guichet-unique.inpi.fr\n' +
+      '2. Copiez BEARER → Vercel > INPI_BEARER\n' +
+      '3. Copiez REFRESH_TOKEN → Vercel > INPI_REFRESH_TOKEN\n' +
+      '4. Redéployez'
+    );
   }
 
-  if (!res.ok) throw new Error(`INPI ${path} : ${res.status}`);
+  if (!res.ok) throw new Error(`INPI ${res.status} sur ${path}`);
   return res.json();
 }
 
 // ── Route GET /api/inpi-auth ──────────────────────────────────────────────────
 export async function GET() {
   try {
-    const ALL_STATUSES = 'status%5B%5D=RECEIVED&status%5B%5D=PAYMENT_VALIDATION_PENDING&status%5B%5D=PAID&status%5B%5D=SIGNATURE_PENDING&status%5B%5D=PAYMENT_PENDING&status%5B%5D=SIGNED&status%5B%5D=AMENDMENT_PENDING&status%5B%5D=AMENDMENT_SIGNATURE_PENDING&status%5B%5D=AMENDMENT_SIGNED&status%5B%5D=AMENDMENT_PAYMENT_PENDING&status%5B%5D=AMENDMENT_PAYMENT_VALIDATION_PENDING&status%5B%5D=AMENDMENT_PAID&status%5B%5D=AMENDED&status%5B%5D=VALIDATION_PENDING&status%5B%5D=EXPIRED&status%5B%5D=VALIDATED&status%5B%5D=REJECTED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING&status%5B%5D=COMPLIANCE_INSEE_PENDING&status%5B%5D=ERROR_DECLARATION_INSEE&status%5B%5D=ERROR_INSEE_EXISTS_PM&status%5B%5D=ERROR_VALIDATION';
+    const ALL_STATUSES = [
+      'RECEIVED','PAYMENT_VALIDATION_PENDING','PAID','SIGNATURE_PENDING','PAYMENT_PENDING',
+      'SIGNED','AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED',
+      'AMENDMENT_PAYMENT_PENDING','AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID',
+      'AMENDED','VALIDATION_PENDING','EXPIRED','VALIDATED','REJECTED',
+      'VALIDATED_BO_AMENDMENT_SIGNED','VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING',
+      'COMPLIANCE_INSEE_PENDING','ERROR_DECLARATION_INSEE','ERROR_INSEE_EXISTS_PM','ERROR_VALIDATION',
+    ].map(s => `status%5B%5D=${s}`).join('&');
 
-    // Charger toutes les pages (max 1000 dossiers)
     let formalites = [];
     for (let page = 1; page <= 20; page++) {
       const listData = await guCall(`/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`);
       const items = buildList(listData);
       formalites = formalites.concat(items);
-      // Arrêter si hydra indique qu'on a tout, ou si la page est incomplète
       const hydraTotal = listData?.['hydra:totalItems'] ?? listData?.totalItems ?? null;
       if (hydraTotal !== null && formalites.length >= hydraTotal) break;
       if (items.length < 50) break;
     }
 
-    const stats = buildStatsFromList(formalites);
-
-    return NextResponse.json({ ok: true, stats, total: formalites.length, formalites });
+    return NextResponse.json({ ok: true, stats: buildStatsFromList(formalites), total: formalites.length, formalites });
 
   } catch (e) {
-    return NextResponse.json({
-      ok: false,
-      error: e.message,
-      hint: e.message.includes('expiré')
-        ? 'Allez sur formalites.inpi.fr → F12 → Application → Cookies → guichet-unique.inpi.fr → copiez BEARER dans Vercel'
-        : 'Vérifiez INPI_BEARER dans les variables Vercel',
-    }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
 function getSetCookies(res) {
   if (typeof res.headers.getSetCookie === 'function') return res.headers.getSetCookie();
   const raw = res.headers.get('set-cookie');
@@ -196,7 +219,6 @@ function buildList(raw) {
 }
 
 function labelStatut(s) {
-  if (!s) return '—';
   const map = {
     RECEIVED: 'Reçue', PAYMENT_PENDING: 'Paiement en attente',
     PAYMENT_VALIDATION_PENDING: 'Validation paiement', PAID: 'Payée',
@@ -205,15 +227,19 @@ function labelStatut(s) {
     REJECTED: 'Rejetée', EXPIRED: 'Expirée',
     AMENDMENT_PENDING: 'Régularisation', AMENDED: 'Régularisée',
     COMPLIANCE_INSEE_PENDING: 'En cours INSEE', ERROR_VALIDATION: 'Erreur validation',
+    ERROR_DECLARATION_INSEE: 'Erreur INSEE', ERROR_INSEE_EXISTS_PM: 'SIREN déjà existant',
+    VALIDATED_BO_AMENDMENT_SIGNED: 'Validée', VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING: 'Validée',
   };
-  return map[s] ?? s;
+  return map[s] ?? s ?? '—';
 }
 
 function colorStatut(s) {
   if (!s) return 'slate';
   if (['VALIDATED','VALIDATED_BO_AMENDMENT_SIGNED','VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING'].includes(s)) return 'green';
   if (['REJECTED','ERROR_VALIDATION','ERROR_DECLARATION_INSEE','ERROR_INSEE_EXISTS_PM'].includes(s)) return 'red';
-  if (['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED','AMENDMENT_PAYMENT_PENDING','AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID','AMENDED','VALIDATION_PENDING'].includes(s)) return 'amber';
-  if (['RECEIVED','PAYMENT_PENDING','PAYMENT_VALIDATION_PENDING','PAID','SIGNATURE_PENDING','SIGNED','COMPLIANCE_INSEE_PENDING'].includes(s)) return 'blue';
+  if (['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED','AMENDMENT_PAYMENT_PENDING',
+       'AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID','AMENDED','VALIDATION_PENDING'].includes(s)) return 'amber';
+  if (['RECEIVED','PAYMENT_PENDING','PAYMENT_VALIDATION_PENDING','PAID',
+       'SIGNATURE_PENDING','SIGNED','COMPLIANCE_INSEE_PENDING'].includes(s)) return 'blue';
   return 'slate';
 }
