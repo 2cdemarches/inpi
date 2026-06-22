@@ -47,17 +47,36 @@ async function loginProcedures(ref, password) {
 
   // Fusionner cookies initiaux + cookies de la réponse login
   const loginCookies = parseCookies(getSetCookies(res));
-  const merged = { ...initCookies, ...loginCookies };
+  let merged = { ...initCookies, ...loginCookies };
+  let cookieStr = Object.entries(merged).map(([k, v]) => `${k}=${v}`).join('; ');
 
-  // Le JWT HS512 commence par eyJ (base64 de {"typ":"JWT"...})
+  // Le JWT peut être posé par un appel API post-login — essayer plusieurs endpoints
+  const postLoginEndpoints = [
+    '/app/v1/news/all',
+    '/app/v1/website/all',
+    '/security/v1/inpiconnect/session',
+    '/app/v1/user/profile',
+  ];
+
+  for (const ep of postLoginEndpoints) {
+    const r = await fetch(`${PROC}${ep}`, {
+      headers: { 'User-Agent': UA, Accept: 'application/json', 'x-client-version': XV, Cookie: cookieStr },
+    }).catch(() => null);
+    if (r) {
+      const extra = parseCookies(getSetCookies(r));
+      merged = { ...merged, ...extra };
+      cookieStr = Object.entries(merged).map(([k, v]) => `${k}=${v}`).join('; ');
+    }
+  }
+
+  // Le JWT HS512 commence par eyJ
   const jwtEntry = Object.entries(merged).find(([, v]) => v.startsWith('eyJ'));
   const jwt = jwtEntry?.[1] ?? null;
 
   if (!jwt) {
-    throw new Error(`JWT introuvable. Cookies init: [${Object.keys(initCookies).join(', ')}] | Cookies login: [${Object.keys(loginCookies).join(', ')}]`);
+    throw new Error(`JWT introuvable après ${postLoginEndpoints.length} appels. Cookies: [${Object.keys(merged).join(', ')}]`);
   }
 
-  const cookieStr = Object.entries(merged).map(([k, v]) => `${k}=${v}`).join('; ');
   return { jwt, cookieStr };
 }
 
