@@ -15,69 +15,69 @@ const XV    = '1.27.0-1776089031331';
 let cache = null;
 let cacheExp = 0;
 
-// ── Étape 1 : login procedures.inpi.fr ───────────────────────────────────────
+// ── Étape 1 : login direct sur guichet-unique.inpi.fr ────────────────────────
 async function loginProcedures(ref, password) {
-  // 1a. Charger la page de login pour obtenir les cookies initiaux (dont le JWT de session)
-  const pageRes = await fetch(`${PROC}/?/login`, {
-    headers: { 'User-Agent': UA, Accept: 'text/html', 'x-client-version': XV },
-    redirect: 'follow',
-  });
-  const initCookies = parseCookies(getSetCookies(pageRes));
-  const initCookieStr = Object.entries(initCookies).map(([k, v]) => `${k}=${v}`).join('; ');
-
-  // 1b. POST login avec les cookies initiaux
-  const res = await fetch(`${PROC}/security/v1/inpiconnect/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json, text/*',
-      'User-Agent': UA,
-      'x-client-version': XV,
-      Referer: `${PROC}/?/login`,
-      Origin: PROC,
-      Cookie: initCookieStr,
-    },
-    body: JSON.stringify({ ref, password }),
-  });
-
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`Login procedures.inpi.fr échoué (${res.status}) : ${t.slice(0, 200)}`);
-  }
-
-  // Fusionner cookies initiaux + cookies de la réponse login
-  const loginCookies = parseCookies(getSetCookies(res));
-  let merged = { ...initCookies, ...loginCookies };
-  let cookieStr = Object.entries(merged).map(([k, v]) => `${k}=${v}`).join('; ');
-
-  // Le JWT peut être posé par un appel API post-login — essayer plusieurs endpoints
-  const postLoginEndpoints = [
-    '/app/v1/news/all',
-    '/app/v1/website/all',
-    '/security/v1/inpiconnect/session',
-    '/app/v1/user/profile',
+  // Essai 1 : login direct guichet-unique avec email+password
+  const attempts = [
+    { url: `${GU}/api/user/login`,              body: { username: ref, password } },
+    { url: `${GU}/api/user/login`,              body: { email: ref, password } },
+    { url: `${GU}/api/authentication_token`,    body: { username: ref, password } },
+    { url: `${GU}/api/users/login`,             body: { username: ref, password } },
+    { url: `${PROC}/security/v1/inpiconnect/login`, body: { ref, password }, proc: true },
   ];
 
-  for (const ep of postLoginEndpoints) {
-    const r = await fetch(`${PROC}${ep}`, {
-      headers: { 'User-Agent': UA, Accept: 'application/json', 'x-client-version': XV, Cookie: cookieStr },
-    }).catch(() => null);
-    if (r) {
-      const extra = parseCookies(getSetCookies(r));
-      merged = { ...merged, ...extra };
-      cookieStr = Object.entries(merged).map(([k, v]) => `${k}=${v}`).join('; ');
+  const errors = [];
+
+  for (const attempt of attempts) {
+    try {
+      const pageRes = await fetch(attempt.proc ? `${PROC}/?/login` : `${GU}/`, {
+        headers: { 'User-Agent': UA, Accept: 'text/html' },
+        redirect: 'follow',
+      });
+      const initCookies = parseCookies(getSetCookies(pageRes));
+      const initStr = Object.entries(initCookies).map(([k, v]) => `${k}=${v}`).join('; ');
+
+      const res = await fetch(attempt.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': UA,
+          fromfo: '1',
+          Cookie: initStr,
+          ...(attempt.proc ? { 'x-client-version': XV, Origin: PROC, Referer: `${PROC}/?/login` }
+                           : { Referer: `${GU}/`, Origin: GU }),
+        },
+        body: JSON.stringify(attempt.body),
+      });
+
+      if (!res.ok) { errors.push(`${attempt.url} → ${res.status}`); continue; }
+
+      const allCookies = parseCookies([...getSetCookies(pageRes), ...getSetCookies(res)]);
+      const cookieStr = Object.entries(allCookies).map(([k, v]) => `${k}=${v}`).join('; ');
+
+      // Cherche BEARER ou un JWT quelconque
+      const bearer = allCookies['BEARER'];
+      if (bearer) return { bearer, cookieStr };
+
+      const jwtEntry = Object.entries(allCookies).find(([, v]) => v.startsWith('eyJ'));
+      if (jwtEntry) return { jwt: jwtEntry[1], cookieStr };
+
+      // Vérifier si le JSON de réponse contient un token
+      const ct = res.headers.get('content-type') ?? '';
+      if (ct.includes('json')) {
+        const json = await res.json().catch(() => ({}));
+        const token = json.token ?? json.access_token ?? json.bearer ?? null;
+        if (token) return { bearer: token, cookieStr };
+      }
+
+      errors.push(`${attempt.url} → 200 mais aucun token/cookie trouvé`);
+    } catch (e) {
+      errors.push(`${attempt.url} → ${e.message}`);
     }
   }
 
-  // Le JWT HS512 commence par eyJ
-  const jwtEntry = Object.entries(merged).find(([, v]) => v.startsWith('eyJ'));
-  const jwt = jwtEntry?.[1] ?? null;
-
-  if (!jwt) {
-    throw new Error(`JWT introuvable après ${postLoginEndpoints.length} appels. Cookies: [${Object.keys(merged).join(', ')}]`);
-  }
-
-  return { jwt, cookieStr };
+  throw new Error(`Aucun login n'a fonctionné :\n${errors.join('\n')}`);
 }
 
 // ── Étape 2 : échange JWT → BEARER sur guichet-unique.inpi.fr ────────────────
@@ -132,7 +132,16 @@ async function getSession() {
   const password = process.env.INPI_PASSWORD;
   if (!ref || !password) throw new Error('INPI_EMAIL et INPI_PASSWORD manquants dans les variables Vercel');
 
-  const { jwt, cookieStr: procCookies } = await loginProcedures(ref, password);
+  const loginResult = await loginProcedures(ref, password);
+
+  // Si le login a directement retourné un BEARER, pas besoin d'échange SSO
+  if (loginResult.bearer) {
+    cache    = { cookieStr: loginResult.cookieStr };
+    cacheExp = Date.now() + 100 * 60 * 1000;
+    return cache;
+  }
+
+  const { jwt, cookieStr: procCookies } = loginResult;
   const guCookies = await exchangeForBearer(jwt, procCookies);
 
   const bearer  = guCookies['BEARER'];
