@@ -104,14 +104,16 @@ export async function GET() {
   try {
     const ALL_STATUSES = 'status%5B%5D=RECEIVED&status%5B%5D=PAYMENT_VALIDATION_PENDING&status%5B%5D=PAID&status%5B%5D=SIGNATURE_PENDING&status%5B%5D=PAYMENT_PENDING&status%5B%5D=SIGNED&status%5B%5D=AMENDMENT_PENDING&status%5B%5D=AMENDMENT_SIGNATURE_PENDING&status%5B%5D=AMENDMENT_SIGNED&status%5B%5D=AMENDMENT_PAYMENT_PENDING&status%5B%5D=AMENDMENT_PAYMENT_VALIDATION_PENDING&status%5B%5D=AMENDMENT_PAID&status%5B%5D=AMENDED&status%5B%5D=VALIDATION_PENDING&status%5B%5D=EXPIRED&status%5B%5D=VALIDATED&status%5B%5D=REJECTED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING&status%5B%5D=COMPLIANCE_INSEE_PENDING&status%5B%5D=ERROR_DECLARATION_INSEE&status%5B%5D=ERROR_INSEE_EXISTS_PM&status%5B%5D=ERROR_VALIDATION';
 
-    // Charger toutes les pages (max 500 dossiers)
+    // Charger toutes les pages (max 1000 dossiers)
     let formalites = [];
-    for (let page = 1; page <= 10; page++) {
+    for (let page = 1; page <= 20; page++) {
       const listData = await guCall(`/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`);
       const items = buildList(listData);
       formalites = formalites.concat(items);
-      const total = listData?.['hydra:totalItems'] ?? listData?.totalItems ?? items.length;
-      if (formalites.length >= total || items.length < 50) break;
+      // Arrêter si hydra indique qu'on a tout, ou si la page est incomplète
+      const hydraTotal = listData?.['hydra:totalItems'] ?? listData?.totalItems ?? null;
+      if (hydraTotal !== null && formalites.length >= hydraTotal) break;
+      if (items.length < 50) break;
     }
 
     const stats = buildStatsFromList(formalites);
