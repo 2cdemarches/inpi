@@ -152,47 +152,170 @@ function DocuSignCard({ env }) {
   );
 }
 
-// ── Carte INPI ────────────────────────────────────────────────────────────────
+// ── Panneau INPI (recherche par SIREN, data.inpi.fr, sans clé) ───────────────
 
-function InpiCard({ dossier }) {
+function InpiPanel() {
+  const STORAGE_KEY = 'inpi_sirens';
+
+  function loadSirens() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+  }
+  function saveSirens(list) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  }
+
+  const [sirens, setSirens] = useState([]);
+  const [results, setResults] = useState({});
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState({});
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const saved = loadSirens();
+    setSirens(saved);
+    saved.forEach(s => fetchSiren(s));
+  }, []);
+
+  async function fetchSiren(siren) {
+    setLoading(l => ({ ...l, [siren]: true }));
+    try {
+      const res = await fetch(`/api/inpi?siren=${siren}`);
+      const data = await res.json();
+      setResults(r => ({ ...r, [siren]: data }));
+    } catch (e) {
+      setResults(r => ({ ...r, [siren]: { ok: false, error: e.message } }));
+    } finally {
+      setLoading(l => ({ ...l, [siren]: false }));
+    }
+  }
+
+  function addSiren(e) {
+    e.preventDefault();
+    const s = input.replace(/\s/g, '');
+    setError('');
+    if (!/^\d{9}$/.test(s)) { setError('SIREN invalide — 9 chiffres requis'); return; }
+    if (sirens.includes(s)) { setError('SIREN déjà suivi'); return; }
+    const next = [s, ...sirens];
+    setSirens(next);
+    saveSirens(next);
+    setInput('');
+    fetchSiren(s);
+  }
+
+  function removeSiren(siren) {
+    const next = sirens.filter(s => s !== siren);
+    setSirens(next);
+    saveSirens(next);
+    setResults(r => { const c = { ...r }; delete c[siren]; return c; });
+  }
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-200 p-5">
-      <div className="flex items-start gap-4">
-        {/* Icône */}
-        <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center flex-shrink-0">
-          <svg className="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+    <div className="space-y-4">
+      {/* Barre de recherche */}
+      <form onSubmit={addSiren} className="flex gap-2">
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="SIREN (9 chiffres) — ex: 123 456 789"
+          className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400 bg-slate-50"
+        />
+        <button type="submit" className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-xl transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-        </div>
+          Suivre
+        </button>
+      </form>
 
-        {/* Contenu */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-semibold text-slate-800 truncate leading-snug">{dossier.denomination}</p>
-              {dossier.siren && (
-                <p className="text-xs text-slate-400 mt-0.5 font-mono">{dossier.siren}</p>
-              )}
+      {error && <p className="text-xs text-red-500 px-1">{error}</p>}
+
+      <p className="text-xs text-slate-400 px-1">
+        Source : <span className="font-mono">data.inpi.fr</span> — Registre National des Entreprises, aucune clé requise.
+      </p>
+
+      {/* Liste des SIREN suivis */}
+      {sirens.length === 0 && (
+        <div className="text-center py-14 text-slate-400">
+          <svg className="w-12 h-12 mx-auto mb-3 opacity-25" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
+          </svg>
+          <p className="text-sm">Ajoute un SIREN pour suivre une entreprise</p>
+        </div>
+      )}
+
+      <div className="grid gap-3">
+        {sirens.map(siren => {
+          const r = results[siren];
+          const isLoading = loading[siren];
+          return (
+            <div key={siren} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  {isLoading && (
+                    <div className="flex items-center gap-2 text-slate-400 text-sm">
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                      Recherche en cours…
+                    </div>
+                  )}
+                  {!isLoading && r && !r.ok && (
+                    <div>
+                      <p className="font-mono text-sm text-slate-500">{siren}</p>
+                      <p className="text-xs text-red-500 mt-1">{r.error}</p>
+                    </div>
+                  )}
+                  {!isLoading && r && r.ok && (
+                    <div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-800 leading-snug">{r.denomination || '—'}</p>
+                          <p className="text-xs text-slate-400 font-mono mt-0.5">{siren}</p>
+                        </div>
+                        <Badge
+                          label={r.actif ? 'Actif' : 'Radié'}
+                          color={r.actif ? 'green' : 'red'}
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-slate-500">
+                        {r.formeJuridique && <span>{r.formeJuridique}</span>}
+                        {r.dateImmatriculation && <span>Immatriculée le {fmt(r.dateImmatriculation)}</span>}
+                        {r.capital && <span>Capital : {Number(r.capital).toLocaleString('fr-FR')} €</span>}
+                        {r.adresse && <span className="truncate max-w-xs">{r.adresse}</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => fetchSiren(siren)}
+                    className="p-1.5 text-slate-300 hover:text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
+                    title="Actualiser"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => removeSiren(siren)}
+                    className="p-1.5 text-slate-300 hover:text-red-400 rounded-lg hover:bg-red-50 transition-colors"
+                    title="Retirer"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
-            <Badge label={dossier.statut_label} color={dossier.statut_color} />
-          </div>
-
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-slate-500">
-            <span className="font-medium text-slate-600">{dossier.type}</span>
-            {dossier.date_depot && <span>Déposé le {fmt(dossier.date_depot)}</span>}
-            {dossier.date_modif && <span>Modifié le {fmt(dossier.date_modif)}</span>}
-          </div>
-
-          {dossier.commentaire && (
-            <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-              {dossier.commentaire}
-            </p>
-          )}
-
-          {dossier.id && (
-            <p className="mt-2 text-xs text-slate-300 font-mono">#{dossier.id}</p>
-          )}
-        </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -224,11 +347,8 @@ function StatCard({ label, value, sub, color = 'indigo' }) {
 export default function Home() {
   const [tab, setTab] = useState('docusign');
   const [dsData, setDsData] = useState(null);
-  const [inpiData, setInpiData] = useState(null);
   const [dsLoading, setDsLoading] = useState(false);
-  const [inpiLoading, setInpiLoading] = useState(false);
   const [dsError, setDsError] = useState('');
-  const [inpiError, setInpiError] = useState('');
   const [search, setSearch] = useState('');
   const [dsFilter, setDsFilter] = useState('tous');
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -248,27 +368,12 @@ export default function Home() {
     }
   }, []);
 
-  const loadInpi = useCallback(async () => {
-    setInpiLoading(true);
-    setInpiError('');
-    try {
-      const data = await apiFetch('/api/inpi');
-      if (!data.ok) throw new Error(data.error);
-      setInpiData(data);
-    } catch (e) {
-      setInpiError(e.message);
-    } finally {
-      setInpiLoading(false);
-    }
-  }, []);
+  useEffect(() => { loadDocuSign(); }, [loadDocuSign]);
 
-  useEffect(() => { loadDocuSign(); loadInpi(); }, [loadDocuSign, loadInpi]);
-
-  // Auto-refresh toutes les 5 minutes
   useEffect(() => {
-    const id = setInterval(() => { loadDocuSign(); loadInpi(); }, 5 * 60 * 1000);
+    const id = setInterval(() => loadDocuSign(), 5 * 60 * 1000);
     return () => clearInterval(id);
-  }, [loadDocuSign, loadInpi]);
+  }, [loadDocuSign]);
 
   // Filtres DocuSign
   const envelopes = dsData?.envelopes || [];
@@ -280,29 +385,12 @@ export default function Home() {
     return matchSearch && matchFilter;
   });
 
-  // Filtres INPI
-  const dossiers = inpiData?.dossiers || [];
-  const filteredDossiers = dossiers.filter(d =>
-    !search ||
-    d.denomination?.toLowerCase().includes(search.toLowerCase()) ||
-    d.siren?.includes(search) ||
-    d.type?.toLowerCase().includes(search.toLowerCase())
-  );
-
   // Stats DocuSign
   const dsStats = {
     total:    envelopes.length,
     signes:   envelopes.filter(e => e.statut === 'completed').length,
     attente:  envelopes.filter(e => ['sent','delivered'].includes(e.statut)).length,
     probleme: envelopes.filter(e => ['declined','voided','expired'].includes(e.statut)).length,
-  };
-
-  // Stats INPI
-  const inpiStats = {
-    total:       dossiers.length,
-    enregistres: dossiers.filter(d => d.statut === 'ENREGISTRE').length,
-    encours:     dossiers.filter(d => ['DEPOSE','EN_COURS_DE_TRAITEMENT'].includes(d.statut)).length,
-    attention:   dossiers.filter(d => ['COMPLEMENT_DEMANDE','REJETE'].includes(d.statut)).length,
   };
 
   const DS_FILTERS = [
@@ -338,7 +426,7 @@ export default function Home() {
               </p>
             )}
             <button
-              onClick={() => { loadDocuSign(); loadInpi(); }}
+              onClick={() => { loadDocuSign(); }}
               disabled={dsLoading || inpiLoading}
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 transition-colors disabled:opacity-50"
             >
@@ -368,25 +456,15 @@ export default function Home() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Enveloppes DocuSign" value={dsStats.total} color="indigo" />
           <StatCard label="Signées" value={dsStats.signes} sub="complétées" color="green" />
-          <StatCard label="Dossiers INPI" value={inpiStats.total} color="orange" />
-          <StatCard label="Enregistrés INPI" value={inpiStats.enregistres} sub="terminés" color="green" />
+          <StatCard label="En attente" value={dsStats.attente} sub="envoyées / ouvertes" color="amber" />
+          <StatCard label="Problèmes" value={dsStats.probleme} sub="refusées / annulées" color="orange" />
         </div>
 
         {/* Alertes */}
-        {(dsStats.probleme > 0 || inpiStats.attention > 0) && (
-          <div className="flex flex-wrap gap-3">
-            {dsStats.probleme > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <strong>{dsStats.probleme}</strong> enveloppe{dsStats.probleme > 1 ? 's' : ''} refusée{dsStats.probleme > 1 ? 's' : ''} ou annulée{dsStats.probleme > 1 ? 's' : ''}
-              </div>
-            )}
-            {inpiStats.attention > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <strong>{inpiStats.attention}</strong> dossier{inpiStats.attention > 1 ? 's' : ''} INPI nécessite{inpiStats.attention > 1 ? 'nt' : ''} une action
-              </div>
-            )}
+        {dsStats.probleme > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <strong>{dsStats.probleme}</strong> enveloppe{dsStats.probleme > 1 ? 's' : ''} refusée{dsStats.probleme > 1 ? 's' : ''} ou annulée{dsStats.probleme > 1 ? 's' : ''}
           </div>
         )}
 
@@ -487,20 +565,8 @@ export default function Home() {
 
           {/* Contenu INPI */}
           {tab === 'inpi' && (
-            <div className="p-5 space-y-4">
-              {inpiError && <ErrorBox message={inpiError} />}
-              {inpiLoading && !inpiData && <Spinner />}
-              {!inpiLoading && !inpiError && filteredDossiers.length === 0 && (
-                <div className="text-center py-16 text-slate-400">
-                  <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                  <p className="text-sm">Aucun dossier INPI trouvé</p>
-                </div>
-              )}
-              <div className="grid gap-3">
-                {filteredDossiers.map(d => <InpiCard key={d.id} dossier={d} />)}
-              </div>
+            <div className="p-5">
+              <InpiPanel />
             </div>
           )}
         </div>
