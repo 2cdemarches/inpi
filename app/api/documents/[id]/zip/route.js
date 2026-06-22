@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import JSZip from 'jszip';
-import { getClient, buildVars, findTemplate, generateDocx, docxToHtml, wrapHtml, htmlToPdf } from '@/lib/generate-doc';
+import { getClient, validateClient, findSource, generatePdf } from '@/lib/generate-doc';
 
 export const maxDuration = 60;
 
@@ -16,26 +16,26 @@ export async function GET(request, { params }) {
 
   try {
     const client = await getClient(id);
-    const vars   = buildVars(client);
+
+    // Vérifier les champs communs (dnc nécessite nom_pere/nom_mere en plus)
+    validateClient(client, 'dnc');
+
     const nom    = client.denomination.replace(/[^a-zA-Z0-9]/g, '_');
     const zip    = new JSZip();
     const errors = [];
 
     await Promise.all(DOCS.map(async ({ type, label }) => {
-      const templatePath = findTemplate(client.type_societe, type);
-      if (!templatePath) { errors.push(`${label} : template manquant pour ${client.type_societe}`); return; }
+      const sourcePath = findSource(client.type_societe, type);
+      if (!sourcePath) { errors.push(`${label} : modèle manquant pour ${client.type_societe}`); return; }
       try {
-        const docxBuf  = generateDocx(templatePath, vars);
-        const html     = await docxToHtml(docxBuf);
-        const fullHtml = wrapHtml(html, `${label} — ${client.denomination}`);
-        const pdfBuf   = await htmlToPdf(fullHtml);
+        const pdfBuf = await generatePdf(sourcePath, type, client);
         zip.file(`${label}_${nom}.pdf`, pdfBuf);
       } catch (e) {
         errors.push(`${label} : ${e.message}`);
       }
     }));
 
-    if (errors.length && zip.files && Object.keys(zip.files).length === 0) {
+    if (errors.length && Object.keys(zip.files).length === 0) {
       return NextResponse.json({ error: errors.join('\n') }, { status: 500 });
     }
 
