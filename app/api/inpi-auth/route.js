@@ -35,15 +35,18 @@ async function loginProcedures(ref, password) {
     throw new Error(`Login procedures.inpi.fr échoué (${res.status}) : ${t.slice(0, 200)}`);
   }
 
-  const setCookies = res.headers.getSetCookie?.() ?? [];
+  const setCookies = getSetCookies(res);
   const cookies = parseCookies(setCookies);
 
-  // Le JWT HS512 s'appelle WMIGSISQBXoulnyZ (nom de cookie variable selon session)
-  // On prend tous les cookies et on cherche celui qui ressemble à un JWT
+  // Le JWT HS512 peut avoir n'importe quel nom — on cherche celui qui commence par eyJ
   const jwtCookie = Object.entries(cookies).find(([, v]) => v.startsWith('eyJ'));
   const jwt = jwtCookie?.[1] ?? null;
 
-  if (!jwt) throw new Error('JWT introuvable dans la réponse procedures.inpi.fr');
+  // Debug temporaire
+  if (!jwt) {
+    const raw = res.headers.get('set-cookie') ?? '';
+    throw new Error(`JWT introuvable. Cookies reçus: [${Object.keys(cookies).join(', ')}] | raw set-cookie: ${raw.slice(0,300)}`);
+  }
 
   const cookieStr = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ');
   return { jwt, cookieStr };
@@ -66,7 +69,7 @@ async function exchangeForBearer(jwt, procCookies) {
     redirect: 'follow',
   });
 
-  const setCookies = res.headers.getSetCookie?.() ?? [];
+  const setCookies = getSetCookies(res);
   const cookies = parseCookies(setCookies);
 
   const bearer = cookies['BEARER'] ?? null;
@@ -84,7 +87,7 @@ async function exchangeForBearer(jwt, procCookies) {
         Cookie: `${procCookies}`,
       },
     });
-    const sc2 = res2.headers.getSetCookie?.() ?? [];
+    const sc2 = getSetCookies(res2);
     const c2 = parseCookies(sc2);
     if (c2['BEARER']) return c2;
     throw new Error('BEARER cookie non reçu — le SSO n\'a pas fonctionné');
@@ -165,6 +168,18 @@ export async function GET() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Extrait les Set-Cookie compatibles Node 18+ et versions antérieures
+function getSetCookies(res) {
+  if (typeof res.headers.getSetCookie === 'function') {
+    return res.headers.getSetCookie();
+  }
+  // Fallback : header set-cookie unique (les headers sont souvent fusionnés avec ', ')
+  const raw = res.headers.get('set-cookie');
+  if (!raw) return [];
+  // Séparer sur ', ' mais pas à l'intérieur des dates (qui contiennent ', ')
+  return raw.split(/,(?=\s*\w+=)/);
+}
 
 function parseCookies(setCookieArray) {
   const out = {};
