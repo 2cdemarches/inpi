@@ -161,6 +161,11 @@ export default function Dashboard() {
     loadClients();
   }
 
+  function syncClient(updated) {
+    setSelected(updated);
+    setClients(prev => prev.map(c => c.id === updated.id ? updated : c));
+  }
+
   async function addStatut(client) {
     if (!newStatut) return;
     const statuts = [...(client.statuts_manuels || []), { label: newStatut, date: new Date().toLocaleDateString('fr-FR') }];
@@ -169,7 +174,7 @@ export default function Dashboard() {
       body: JSON.stringify({ statuts_manuels: statuts }),
     });
     const json = await res.json();
-    if (json.ok) { setSelected(json.client); setNewStatut(''); loadClients(); }
+    if (json.ok) { syncClient(json.client); setNewStatut(''); }
   }
 
   async function removeStatut(client, idx) {
@@ -179,7 +184,7 @@ export default function Dashboard() {
       body: JSON.stringify({ statuts_manuels: statuts }),
     });
     const json = await res.json();
-    if (json.ok) { setSelected(json.client); loadClients(); }
+    if (json.ok) syncClient(json.client);
   }
 
   const types = ['tous', ...TYPES_SOCIETE];
@@ -210,6 +215,8 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
+            <a href="/signature" className="px-3 py-2 text-sm text-blue-600 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 font-medium">✍️ Signatures</a>
+            <a href="/inpi"      className="px-3 py-2 text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-xl hover:bg-orange-100 font-medium">🏛️ INPI</a>
             <button onClick={openNew}
               className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -218,11 +225,10 @@ export default function Dashboard() {
               Nouveau client
             </button>
             <button onClick={async () => { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/login'; }}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+              className="p-2 text-sm text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
-              Déconnexion
             </button>
           </div>
         </div>
@@ -256,48 +262,29 @@ export default function Dashboard() {
             {filtered.map(client => (
               <div key={client.id} onClick={() => setSelected(selected?.id === client.id ? null : client)}
                 className={`bg-white rounded-2xl border p-4 cursor-pointer transition-all hover:shadow-sm ${selected?.id === client.id ? 'border-indigo-300 ring-1 ring-indigo-200' : 'border-slate-100'}`}>
-
-                {/* Ligne 1 : nom + type */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center font-bold text-indigo-600 text-sm flex-shrink-0">
-                      {client.denomination?.charAt(0) || '?'}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-800 leading-tight">{client.denomination}</p>
-                      <p className="text-xs text-slate-400">{client.civilite} {client.prenom} {client.nom}</p>
-                    </div>
-                  </div>
-                  <Badge label={client.type_societe} color="purple" />
-                </div>
-
-                {/* Ligne 2 : 3 statuts */}
-                <div className="flex flex-wrap gap-2 pl-12">
-                  {/* Statut DocuSign */}
-                  <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                    <DsStatus envelopeId={client.docusign_envelope_id} />
+                <div className="flex items-center gap-3">
+                  {/* Avatar */}
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center font-bold text-indigo-600 text-sm flex-shrink-0">
+                    {client.denomination?.charAt(0) || '?'}
                   </div>
 
-                  {/* Statut INPI */}
-                  <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
-                    </svg>
-                    <InpiStatus denomination={client.denomination} />
+                  {/* Nom + client */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 leading-tight truncate">{client.denomination}</p>
+                    <p className="text-xs text-slate-400 truncate">{client.civilite} {client.prenom} {client.nom}</p>
                   </div>
 
-                  {/* Dernier statut manuel */}
-                  {(client.statuts_manuels || []).length > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      <Badge label={(client.statuts_manuels.at(-1)).label} color="orange" dot />
+                  {/* Statuts à droite */}
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <Badge label={client.type_societe} color="purple" />
+                    <div className="flex gap-1.5 flex-wrap justify-end">
+                      <DsStatus envelopeId={client.docusign_envelope_id} />
+                      <InpiStatus denomination={client.denomination} />
+                      {(client.statuts_manuels || []).length > 0 && (
+                        <Badge label={client.statuts_manuels.at(-1).label} color="orange" dot />
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             ))}
