@@ -102,13 +102,19 @@ async function guCall(path) {
 // ── Route GET /api/inpi-auth ──────────────────────────────────────────────────
 export async function GET() {
   try {
-    const [countData, listData] = await Promise.all([
-      guCall('/api/formalities/count-by-status'),
-      guCall('/api/formalities/dashboard-list?status%5B%5D=RECEIVED&status%5B%5D=PAYMENT_VALIDATION_PENDING&status%5B%5D=PAID&status%5B%5D=SIGNATURE_PENDING&status%5B%5D=PAYMENT_PENDING&status%5B%5D=SIGNED&status%5B%5D=AMENDMENT_PENDING&status%5B%5D=AMENDMENT_SIGNATURE_PENDING&status%5B%5D=AMENDMENT_SIGNED&status%5B%5D=AMENDMENT_PAYMENT_PENDING&status%5B%5D=AMENDMENT_PAYMENT_VALIDATION_PENDING&status%5B%5D=AMENDMENT_PAID&status%5B%5D=AMENDED&status%5B%5D=VALIDATION_PENDING&status%5B%5D=EXPIRED&status%5B%5D=VALIDATED&status%5B%5D=REJECTED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING&status%5B%5D=COMPLIANCE_INSEE_PENDING&status%5B%5D=ERROR_DECLARATION_INSEE&status%5B%5D=ERROR_INSEE_EXISTS_PM&status%5B%5D=ERROR_VALIDATION&order%5Bcreated%5D=desc&page=1&itemsPerPage=50'),
-    ]);
+    const ALL_STATUSES = 'status%5B%5D=RECEIVED&status%5B%5D=PAYMENT_VALIDATION_PENDING&status%5B%5D=PAID&status%5B%5D=SIGNATURE_PENDING&status%5B%5D=PAYMENT_PENDING&status%5B%5D=SIGNED&status%5B%5D=AMENDMENT_PENDING&status%5B%5D=AMENDMENT_SIGNATURE_PENDING&status%5B%5D=AMENDMENT_SIGNED&status%5B%5D=AMENDMENT_PAYMENT_PENDING&status%5B%5D=AMENDMENT_PAYMENT_VALIDATION_PENDING&status%5B%5D=AMENDMENT_PAID&status%5B%5D=AMENDED&status%5B%5D=VALIDATION_PENDING&status%5B%5D=EXPIRED&status%5B%5D=VALIDATED&status%5B%5D=REJECTED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING&status%5B%5D=COMPLIANCE_INSEE_PENDING&status%5B%5D=ERROR_DECLARATION_INSEE&status%5B%5D=ERROR_INSEE_EXISTS_PM&status%5B%5D=ERROR_VALIDATION';
 
-    const stats      = buildStats(countData);
-    const formalites = buildList(listData);
+    // Charger toutes les pages (max 500 dossiers)
+    let formalites = [];
+    for (let page = 1; page <= 10; page++) {
+      const listData = await guCall(`/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`);
+      const items = buildList(listData);
+      formalites = formalites.concat(items);
+      const total = listData?.['hydra:totalItems'] ?? listData?.totalItems ?? items.length;
+      if (formalites.length >= total || items.length < 50) break;
+    }
+
+    const stats = buildStatsFromList(formalites);
 
     return NextResponse.json({ ok: true, stats, total: formalites.length, formalites });
 
@@ -143,18 +149,14 @@ function parseCookies(arr) {
   return out;
 }
 
-function buildStats(raw) {
-  if (Array.isArray(raw)) {
-    const find = (...codes) => codes.reduce((s, c) => s + (raw.find(x => x.status === c)?.count ?? 0), 0);
-    return {
-      total:                     raw.reduce((s, x) => s + (x.count ?? 0), 0),
-      validees:                  find('VALIDATED', 'VALIDATED_BO_AMENDMENT_SIGNED', 'VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING'),
-      rejetees:                  find('REJECTED'),
-      en_attente_regularisation: find('AMENDMENT_PENDING', 'AMENDMENT_SIGNATURE_PENDING', 'AMENDMENT_SIGNED', 'AMENDMENT_PAYMENT_PENDING', 'AMENDMENT_PAYMENT_VALIDATION_PENDING', 'AMENDMENT_PAID', 'AMENDED'),
-      en_attente_validation:     find('VALIDATION_PENDING', 'RECEIVED'),
-    };
-  }
-  return raw ?? {};
+function buildStatsFromList(list) {
+  return {
+    total:                     list.length,
+    validees:                  list.filter(f => ['VALIDATED','VALIDATED_BO_AMENDMENT_SIGNED','VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING'].includes(f.statut)).length,
+    rejetees:                  list.filter(f => ['REJECTED','ERROR_VALIDATION','ERROR_DECLARATION_INSEE','ERROR_INSEE_EXISTS_PM'].includes(f.statut)).length,
+    en_attente_regularisation: list.filter(f => ['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED','AMENDMENT_PAYMENT_PENDING','AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID','AMENDED'].includes(f.statut)).length,
+    en_attente_validation:     list.filter(f => ['VALIDATION_PENDING','RECEIVED'].includes(f.statut)).length,
+  };
 }
 
 function buildList(raw) {
