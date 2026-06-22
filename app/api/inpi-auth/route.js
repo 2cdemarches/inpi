@@ -14,31 +14,49 @@ let cachedRefresh = null;
 let bearerExp     = 0;
 
 // ── Renouvellement BEARER via REFRESH_TOKEN ───────────────────────────────────
-async function refreshBearer(refreshToken) {
-  const endpoints = [
-    { url: `${GU}/api/token/refresh`,        body: { refresh_token: refreshToken } },
-    { url: `${GU}/api/user/refresh-token`,   body: { refreshToken } },
-    { url: `${GU}/api/authentication_token`, body: { refresh_token: refreshToken } },
-  ];
+async function refreshBearer(bearer, refreshToken) {
+  // INPI utilise les cookies pour le refresh — envoyer les deux cookies
+  const res = await fetch(`${GU}/api/token/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'User-Agent': UA,
+      Referer: `${GU}/`,
+      // Envoyer les cookies comme le ferait un vrai navigateur
+      Cookie: `BEARER=${bearer}; REFRESH_TOKEN=${refreshToken}`,
+    },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  }).catch(() => null);
 
-  for (const ep of endpoints) {
-    const res = await fetch(ep.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/` },
-      body: JSON.stringify(ep.body),
-    }).catch(() => null);
-
-    if (!res) continue;
-
+  if (res) {
     const cookies = parseCookies(getSetCookies(res));
     if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
-
     if (res.ok) {
       const json = await res.json().catch(() => ({}));
       const token = json.token ?? json.access_token ?? json.bearer ?? null;
       if (token) return { bearer: token, refresh: json.refresh_token ?? refreshToken };
     }
   }
+
+  // Fallback: essayer avec seulement le refresh token en cookie
+  const res2 = await fetch(`${GU}/api/token/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'User-Agent': UA,
+      Referer: `${GU}/`,
+      Cookie: `REFRESH_TOKEN=${refreshToken}`,
+    },
+    body: JSON.stringify({}),
+  }).catch(() => null);
+
+  if (res2) {
+    const cookies = parseCookies(getSetCookies(res2));
+    if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
+  }
+
   return null;
 }
 
@@ -55,7 +73,7 @@ async function getBearer() {
   // Essayer de renouveler si on a un refresh token
   if (envRefresh) {
     const refreshToken = cachedRefresh ?? envRefresh;
-    const renewed = await refreshBearer(refreshToken).catch(() => null);
+    const renewed = await refreshBearer(envBearer, refreshToken).catch(() => null);
     if (renewed) {
       cachedBearer  = renewed.bearer;
       cachedRefresh = renewed.refresh;
@@ -91,7 +109,7 @@ async function guCall(path) {
     const res2 = await fetch(`${GU}${path}`, {
       headers: { Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${bearer2}` },
     });
-    if (!res2.ok) throw new Error(`INPI ${path} : ${res2.status} — le BEARER a expiré, mettez à jour INPI_BEARER dans Vercel`);
+    if (!res2.ok) throw new Error(`Token INPI expiré (${res2.status}). Reconnectez-vous sur guichet-unique.inpi.fr, copiez le cookie BEARER dans les DevTools (F12 → Application → Cookies) et mettez à jour INPI_BEARER + INPI_REFRESH_TOKEN dans Vercel → Settings → Environment Variables → Redeploy.`);
     return res2.json();
   }
 
