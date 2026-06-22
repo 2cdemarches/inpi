@@ -17,6 +17,15 @@ let cacheExp = 0;
 
 // ── Étape 1 : login procedures.inpi.fr ───────────────────────────────────────
 async function loginProcedures(ref, password) {
+  // 1a. Charger la page de login pour obtenir les cookies initiaux (dont le JWT de session)
+  const pageRes = await fetch(`${PROC}/?/login`, {
+    headers: { 'User-Agent': UA, Accept: 'text/html', 'x-client-version': XV },
+    redirect: 'follow',
+  });
+  const initCookies = parseCookies(getSetCookies(pageRes));
+  const initCookieStr = Object.entries(initCookies).map(([k, v]) => `${k}=${v}`).join('; ');
+
+  // 1b. POST login avec les cookies initiaux
   const res = await fetch(`${PROC}/security/v1/inpiconnect/login`, {
     method: 'POST',
     headers: {
@@ -26,6 +35,7 @@ async function loginProcedures(ref, password) {
       'x-client-version': XV,
       Referer: `${PROC}/?/login`,
       Origin: PROC,
+      Cookie: initCookieStr,
     },
     body: JSON.stringify({ ref, password }),
   });
@@ -35,20 +45,19 @@ async function loginProcedures(ref, password) {
     throw new Error(`Login procedures.inpi.fr échoué (${res.status}) : ${t.slice(0, 200)}`);
   }
 
-  const setCookies = getSetCookies(res);
-  const cookies = parseCookies(setCookies);
+  // Fusionner cookies initiaux + cookies de la réponse login
+  const loginCookies = parseCookies(getSetCookies(res));
+  const merged = { ...initCookies, ...loginCookies };
 
-  // Le JWT HS512 peut avoir n'importe quel nom — on cherche celui qui commence par eyJ
-  const jwtCookie = Object.entries(cookies).find(([, v]) => v.startsWith('eyJ'));
-  const jwt = jwtCookie?.[1] ?? null;
+  // Le JWT HS512 commence par eyJ (base64 de {"typ":"JWT"...})
+  const jwtEntry = Object.entries(merged).find(([, v]) => v.startsWith('eyJ'));
+  const jwt = jwtEntry?.[1] ?? null;
 
-  // Debug temporaire
   if (!jwt) {
-    const raw = res.headers.get('set-cookie') ?? '';
-    throw new Error(`JWT introuvable. Cookies reçus: [${Object.keys(cookies).join(', ')}] | raw set-cookie: ${raw.slice(0,300)}`);
+    throw new Error(`JWT introuvable. Cookies init: [${Object.keys(initCookies).join(', ')}] | Cookies login: [${Object.keys(loginCookies).join(', ')}]`);
   }
 
-  const cookieStr = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ');
+  const cookieStr = Object.entries(merged).map(([k, v]) => `${k}=${v}`).join('; ');
   return { jwt, cookieStr };
 }
 
