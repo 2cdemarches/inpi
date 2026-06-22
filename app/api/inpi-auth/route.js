@@ -105,7 +105,10 @@ export async function GET() {
         data_type: typeof raw?.data,
         data_is_array: Array.isArray(raw?.data),
         data_keys: raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) ? Object.keys(raw.data) : null,
-        data_preview: JSON.stringify(raw?.data)?.slice(0, 500),
+        webapps_type: typeof raw?.data?.webapps,
+        webapps_is_array: Array.isArray(raw?.data?.webapps),
+        webapps_keys: raw?.data?.webapps && !Array.isArray(raw.data.webapps) ? Object.keys(raw.data.webapps) : null,
+        webapps_preview: JSON.stringify(raw?.data?.webapps)?.slice(0, 500),
       },
     });
 
@@ -119,18 +122,20 @@ export async function GET() {
 }
 
 function extractFormalites(raw) {
-  // /app/v1/website/all retourne probablement un tableau ou un objet avec des clés
-  if (Array.isArray(raw)) return raw.map(normalize);
-
-  // Cherche la clé qui contient les formalités
-  for (const key of ['formalites', 'dossiers', 'procedures', 'data', 'items', 'results', 'content']) {
-    if (Array.isArray(raw?.[key])) return raw[key].map(normalize);
+  // Structure réelle : raw.data.webapps
+  const webapps = raw?.data?.webapps;
+  if (Array.isArray(webapps)) return webapps.map(normalize);
+  if (webapps && typeof webapps === 'object') {
+    // webapps peut être un objet dont les valeurs sont des tableaux
+    const arrays = Object.values(webapps).filter(v => Array.isArray(v));
+    if (arrays.length) return arrays.flat().map(normalize);
   }
 
-  // Si c'est un objet avec des sous-tableaux, les concatène tous
-  const arrays = Object.values(raw || {}).filter(v => Array.isArray(v));
-  if (arrays.length) return arrays.flat().map(normalize);
-
+  if (Array.isArray(raw)) return raw.map(normalize);
+  for (const key of ['formalites', 'dossiers', 'procedures', 'items', 'results', 'content']) {
+    if (Array.isArray(raw?.[key])) return raw[key].map(normalize);
+    if (Array.isArray(raw?.data?.[key])) return raw.data[key].map(normalize);
+  }
   return [];
 }
 
