@@ -156,9 +156,10 @@ export default function Dashboard() {
 
   async function deleteClient(id) {
     if (!confirm('Supprimer ce client définitivement ?')) return;
-    await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+    if (!res.ok) { alert('Erreur lors de la suppression'); return; }
     if (selected?.id === id) setSelected(null);
-    loadClients();
+    setClients(prev => prev.filter(c => c.id !== id));
   }
 
   function syncClient(updated) {
