@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 const APP_PASSWORD = process.env.APP_PASSWORD || 'formalites2024';
 
-export function middleware(request) {
+export function proxy(request) {
   const { pathname } = request.nextUrl;
 
   // Les routes API appelées depuis le dashboard sont déjà protégées par le cookie
