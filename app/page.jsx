@@ -344,23 +344,30 @@ export default function Dashboard() {
               </Section>
 
               {/* Documents */}
-              <Section title="Documents à générer">
-                <div className="grid grid-cols-2 gap-2">
+              <Section title="Documents PDF">
+                <div className="grid grid-cols-2 gap-2 mb-2">
                   {[
-                    { type: 'statuts', label: 'Statuts' },
-                    { type: 'pouvoir', label: 'Pouvoir' },
+                    { type: 'statuts',       label: 'Statuts' },
+                    { type: 'pouvoir',       label: 'Pouvoir' },
                     { type: 'souscripteurs', label: 'Liste souscripteurs' },
-                    { type: 'dnc', label: 'DNC' },
+                    { type: 'dnc',           label: 'DNC' },
                   ].map(({ type, label }) => (
-                    <a key={type} href={`/api/documents/${selected.id}/${type}`}
-                      className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 rounded-xl hover:bg-slate-50 text-sm text-slate-700 transition-colors">
-                      <svg className="w-4 h-4 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <a key={type} href={`/api/documents/${selected.id}/${type}`} target="_blank"
+                      className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 rounded-xl hover:bg-red-50 hover:border-red-200 text-sm text-slate-700 hover:text-red-700 transition-colors">
+                      <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                       </svg>
                       {label}
                     </a>
                   ))}
                 </div>
+                <a href={`/api/documents/${selected.id}/zip`}
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Tout télécharger (ZIP)
+                </a>
               </Section>
 
               {/* Suivi manuel */}
