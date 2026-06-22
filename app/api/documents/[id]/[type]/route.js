@@ -21,6 +21,9 @@ export async function GET(request, { params }) {
   }
 
   // Variables disponibles dans les templates
+  const nomPereSansC = client.nom_pere?.replace(/^(Monsieur|Madame|M\.|Mme)\s+/i, '') || '';
+  const nomMereSansC = client.nom_mere?.replace(/^(Monsieur|Madame|M\.|Mme)\s+/i, '') || '';
+
   const vars = {
     // Civilité
     civilite:          client.civilite,
@@ -35,6 +38,8 @@ export async function GET(request, { params }) {
     adresse:           client.adresse,
     nom_pere:          client.nom_pere || '',
     nom_mere:          client.nom_mere || '',
+    nom_pere_sans_civilite: nomPereSansC,
+    nom_mere_sans_civilite: nomMereSansC,
 
     // Société
     denomination:      client.denomination,
