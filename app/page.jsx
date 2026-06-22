@@ -149,8 +149,15 @@ export default function Dashboard() {
       body: JSON.stringify(form),
     });
     const json = await res.json();
-    if (json.ok) { setShowForm(false); loadClients(); }
-    else alert('Erreur : ' + json.error);
+    if (json.ok) {
+      setShowForm(false);
+      if (editClient) {
+        setClients(prev => prev.map(c => c.id === json.client.id ? json.client : c));
+        if (selected?.id === json.client.id) setSelected(json.client);
+      } else {
+        setClients(prev => [json.client, ...prev]);
+      }
+    } else alert('Erreur : ' + json.error);
     setSaving(false);
   }
 
