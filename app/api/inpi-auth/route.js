@@ -1,181 +1,98 @@
 import { NextResponse } from 'next/server';
 
 /**
- * Flow SSO INPI :
- * 1. POST procedures.inpi.fr/security/v1/inpiconnect/login  → cookie WMIGSISQBXoulnyZ (JWT HS512)
- * 2. GET  guichet-unique.inpi.fr/?/ets/{JWT}                → cookie BEARER (JWT RS256)
- * 3. GET  guichet-unique.inpi.fr/api/formalities/…          → données formalités
+ * Auth guichet-unique.inpi.fr via BEARER + REFRESH_TOKEN stockés dans Vercel.
+ * Le BEARER expire en ~2h. On le renouvelle via le REFRESH_TOKEN.
+ * Quand le REFRESH_TOKEN expire (semaines/mois), mettre à jour les vars Vercel.
  */
 
-const PROC  = 'https://procedures.inpi.fr';
-const GU    = 'https://guichet-unique.inpi.fr';
-const UA    = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-const XV    = '1.27.0-1776089031331';
+const GU = 'https://guichet-unique.inpi.fr';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-let cache = null;
-let cacheExp = 0;
+let cachedBearer  = null;
+let cachedRefresh = null;
+let bearerExp     = 0;
 
-// ── Étape 1 : login direct sur guichet-unique.inpi.fr ────────────────────────
-async function loginProcedures(ref, password) {
-  // Essai 1 : login direct guichet-unique avec email+password
-  const attempts = [
-    { url: `${GU}/api/user/login`,              body: { username: ref, password } },
-    { url: `${GU}/api/user/login`,              body: { email: ref, password } },
-    { url: `${GU}/api/authentication_token`,    body: { username: ref, password } },
-    { url: `${GU}/api/users/login`,             body: { username: ref, password } },
-    { url: `${PROC}/security/v1/inpiconnect/login`, body: { ref, password }, proc: true },
+// ── Renouvellement BEARER via REFRESH_TOKEN ───────────────────────────────────
+async function refreshBearer(refreshToken) {
+  const endpoints = [
+    { url: `${GU}/api/token/refresh`,        body: { refresh_token: refreshToken } },
+    { url: `${GU}/api/user/refresh-token`,   body: { refreshToken } },
+    { url: `${GU}/api/authentication_token`, body: { refresh_token: refreshToken } },
   ];
 
-  const errors = [];
+  for (const ep of endpoints) {
+    const res = await fetch(ep.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/` },
+      body: JSON.stringify(ep.body),
+    }).catch(() => null);
 
-  for (const attempt of attempts) {
-    try {
-      const pageRes = await fetch(attempt.proc ? `${PROC}/?/login` : `${GU}/`, {
-        headers: { 'User-Agent': UA, Accept: 'text/html' },
-        redirect: 'follow',
-      });
-      const initCookies = parseCookies(getSetCookies(pageRes));
-      const initStr = Object.entries(initCookies).map(([k, v]) => `${k}=${v}`).join('; ');
+    if (!res) continue;
 
-      const res = await fetch(attempt.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'User-Agent': UA,
-          fromfo: '1',
-          Cookie: initStr,
-          ...(attempt.proc ? { 'x-client-version': XV, Origin: PROC, Referer: `${PROC}/?/login` }
-                           : { Referer: `${GU}/`, Origin: GU }),
-        },
-        body: JSON.stringify(attempt.body),
-      });
+    const cookies = parseCookies(getSetCookies(res));
+    if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
 
-      if (!res.ok) { errors.push(`${attempt.url} → ${res.status}`); continue; }
+    if (res.ok) {
+      const json = await res.json().catch(() => ({}));
+      const token = json.token ?? json.access_token ?? json.bearer ?? null;
+      if (token) return { bearer: token, refresh: json.refresh_token ?? refreshToken };
+    }
+  }
+  return null;
+}
 
-      const allCookies = parseCookies([...getSetCookies(pageRes), ...getSetCookies(res)]);
-      const cookieStr = Object.entries(allCookies).map(([k, v]) => `${k}=${v}`).join('; ');
+// ── Récupère BEARER valide ────────────────────────────────────────────────────
+async function getBearer() {
+  // Utiliser le cache si encore valide
+  if (cachedBearer && Date.now() < bearerExp) return cachedBearer;
 
-      // Cherche BEARER ou un JWT quelconque
-      const bearer = allCookies['BEARER'];
-      if (bearer) return { bearer, cookieStr };
+  const envBearer  = process.env.INPI_BEARER;
+  const envRefresh = process.env.INPI_REFRESH_TOKEN;
 
-      const jwtEntry = Object.entries(allCookies).find(([, v]) => v.startsWith('eyJ'));
-      if (jwtEntry) return { jwt: jwtEntry[1], cookieStr };
+  if (!envBearer) throw new Error('INPI_BEARER manquant dans les variables Vercel');
 
-      // Vérifier si le JSON de réponse contient un token
-      const ct = res.headers.get('content-type') ?? '';
-      if (ct.includes('json')) {
-        const json = await res.json().catch(() => ({}));
-        const token = json.token ?? json.access_token ?? json.bearer ?? null;
-        if (token) return { bearer: token, cookieStr };
-      }
-
-      errors.push(`${attempt.url} → 200 mais aucun token/cookie trouvé`);
-    } catch (e) {
-      errors.push(`${attempt.url} → ${e.message}`);
+  // Essayer de renouveler si on a un refresh token
+  if (envRefresh) {
+    const refreshToken = cachedRefresh ?? envRefresh;
+    const renewed = await refreshBearer(refreshToken).catch(() => null);
+    if (renewed) {
+      cachedBearer  = renewed.bearer;
+      cachedRefresh = renewed.refresh;
+      bearerExp     = Date.now() + 100 * 60 * 1000;
+      return cachedBearer;
     }
   }
 
-  throw new Error(`Aucun login n'a fonctionné :\n${errors.join('\n')}`);
-}
-
-// ── Étape 2 : échange JWT → BEARER sur guichet-unique.inpi.fr ────────────────
-async function exchangeForBearer(jwt, procCookies) {
-  // Appel à la page SSO qui valide le JWT et pose le cookie BEARER
-  const ssoUrl = `${GU}/?/ets/${jwt}`;
-
-  const res = await fetch(ssoUrl, {
-    method: 'GET',
-    headers: {
-      'User-Agent': UA,
-      Accept: 'text/html,application/xhtml+xml',
-      Referer: `${PROC}/?/home`,
-      Cookie: procCookies,
-      fromfo: '1',
-    },
-    redirect: 'follow',
-  });
-
-  const setCookies = getSetCookies(res);
-  const cookies = parseCookies(setCookies);
-
-  const bearer = cookies['BEARER'] ?? null;
-  const refresh = cookies['REFRESH_TOKEN'] ?? null;
-
-  if (!bearer) {
-    // Essai alternatif : appel direct à /api/user/logged avec fromfo
-    const res2 = await fetch(`${GU}/api/user/logged`, {
-      method: 'GET',
-      headers: {
-        'User-Agent': UA,
-        Accept: 'application/json',
-        Referer: `${GU}/`,
-        fromfo: '1',
-        Cookie: `${procCookies}`,
-      },
-    });
-    const sc2 = getSetCookies(res2);
-    const c2 = parseCookies(sc2);
-    if (c2['BEARER']) return c2;
-    throw new Error('BEARER cookie non reçu — le SSO n\'a pas fonctionné');
-  }
-
-  return cookies;
-}
-
-// ── Session complète ──────────────────────────────────────────────────────────
-async function getSession() {
-  if (cache && Date.now() < cacheExp) return cache;
-
-  const ref      = process.env.INPI_EMAIL;
-  const password = process.env.INPI_PASSWORD;
-  if (!ref || !password) throw new Error('INPI_EMAIL et INPI_PASSWORD manquants dans les variables Vercel');
-
-  const loginResult = await loginProcedures(ref, password);
-
-  // Si le login a directement retourné un BEARER, pas besoin d'échange SSO
-  if (loginResult.bearer) {
-    cache    = { cookieStr: loginResult.cookieStr };
-    cacheExp = Date.now() + 100 * 60 * 1000;
-    return cache;
-  }
-
-  const { jwt, cookieStr: procCookies } = loginResult;
-  const guCookies = await exchangeForBearer(jwt, procCookies);
-
-  const bearer  = guCookies['BEARER'];
-  const refresh = guCookies['REFRESH_TOKEN'];
-  const cookieStr = [
-    ...Object.entries(guCookies).map(([k, v]) => `${k}=${v}`),
-  ].join('; ');
-
-  cache    = { cookieStr, bearer, refresh };
-  cacheExp = Date.now() + 100 * 60 * 1000; // 100 min (token expire en 2h)
-  return cache;
+  // Fallback : utiliser le BEARER de l'env var tel quel
+  cachedBearer = envBearer;
+  bearerExp    = Date.now() + 90 * 60 * 1000;
+  return cachedBearer;
 }
 
 // ── Appel API guichet-unique ──────────────────────────────────────────────────
 async function guCall(path) {
-  const session = await getSession();
+  const bearer = await getBearer();
 
   const res = await fetch(`${GU}${path}`, {
     headers: {
       Accept: 'application/json',
       'User-Agent': UA,
       Referer: `${GU}/`,
-      Cookie: session.cookieStr,
+      Cookie: `BEARER=${bearer}${cachedRefresh ? `; REFRESH_TOKEN=${cachedRefresh}` : ''}`,
     },
   });
 
-  if (res.status === 401 || res.status === 403) {
-    cache = null;
-    const s2 = await getSession();
-    const r2 = await fetch(`${GU}${path}`, {
-      headers: { Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: s2.cookieStr },
+  if (res.status === 401) {
+    // Token expiré → forcer refresh
+    cachedBearer = null;
+    bearerExp    = 0;
+    const bearer2 = await getBearer();
+    const res2 = await fetch(`${GU}${path}`, {
+      headers: { Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${bearer2}` },
     });
-    if (!r2.ok) throw new Error(`INPI ${path} : ${r2.status}`);
-    return r2.json();
+    if (!res2.ok) throw new Error(`INPI ${path} : ${res2.status} — le BEARER a expiré, mettez à jour INPI_BEARER dans Vercel`);
+    return res2.json();
   }
 
   if (!res.ok) throw new Error(`INPI ${path} : ${res.status}`);
@@ -190,7 +107,7 @@ export async function GET() {
       guCall('/api/formalities/dashboard-list?status%5B%5D=RECEIVED&status%5B%5D=PAYMENT_VALIDATION_PENDING&status%5B%5D=PAID&status%5B%5D=SIGNATURE_PENDING&status%5B%5D=PAYMENT_PENDING&status%5B%5D=SIGNED&status%5B%5D=AMENDMENT_PENDING&status%5B%5D=AMENDMENT_SIGNATURE_PENDING&status%5B%5D=AMENDMENT_SIGNED&status%5B%5D=AMENDMENT_PAYMENT_PENDING&status%5B%5D=AMENDMENT_PAYMENT_VALIDATION_PENDING&status%5B%5D=AMENDMENT_PAID&status%5B%5D=AMENDED&status%5B%5D=VALIDATION_PENDING&status%5B%5D=EXPIRED&status%5B%5D=VALIDATED&status%5B%5D=REJECTED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNED&status%5B%5D=VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING&status%5B%5D=COMPLIANCE_INSEE_PENDING&status%5B%5D=ERROR_DECLARATION_INSEE&status%5B%5D=ERROR_INSEE_EXISTS_PM&status%5B%5D=ERROR_VALIDATION&order%5Bcreated%5D=desc&page=1&itemsPerPage=50'),
     ]);
 
-    const stats = buildStats(countData);
+    const stats      = buildStats(countData);
     const formalites = buildList(listData);
 
     return NextResponse.json({ ok: true, stats, total: formalites.length, formalites });
@@ -199,34 +116,29 @@ export async function GET() {
     return NextResponse.json({
       ok: false,
       error: e.message,
-      hint: 'Vérifiez INPI_EMAIL et INPI_PASSWORD dans les variables Vercel',
+      hint: e.message.includes('expiré')
+        ? 'Allez sur formalites.inpi.fr → F12 → Application → Cookies → guichet-unique.inpi.fr → copiez BEARER dans Vercel'
+        : 'Vérifiez INPI_BEARER dans les variables Vercel',
     }, { status: 500 });
   }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Extrait les Set-Cookie compatibles Node 18+ et versions antérieures
 function getSetCookies(res) {
-  if (typeof res.headers.getSetCookie === 'function') {
-    return res.headers.getSetCookie();
-  }
-  // Fallback : header set-cookie unique (les headers sont souvent fusionnés avec ', ')
+  if (typeof res.headers.getSetCookie === 'function') return res.headers.getSetCookie();
   const raw = res.headers.get('set-cookie');
   if (!raw) return [];
-  // Séparer sur ', ' mais pas à l'intérieur des dates (qui contiennent ', ')
   return raw.split(/,(?=\s*\w+=)/);
 }
 
-function parseCookies(setCookieArray) {
+function parseCookies(arr) {
   const out = {};
-  for (const c of setCookieArray) {
+  for (const c of arr) {
     const [pair] = c.split(';');
     const eq = pair.indexOf('=');
     if (eq < 0) continue;
-    const k = pair.slice(0, eq).trim();
-    const v = pair.slice(eq + 1).trim();
-    out[k] = v;
+    out[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
   }
   return out;
 }
@@ -264,10 +176,12 @@ function buildList(raw) {
 function labelStatut(s) {
   if (!s) return '—';
   const map = {
-    RECEIVED: 'Reçue', PAYMENT_PENDING: 'Paiement en attente', PAYMENT_VALIDATION_PENDING: 'Validation paiement',
-    PAID: 'Payée', SIGNATURE_PENDING: 'Signature en attente', SIGNED: 'Signée',
-    VALIDATION_PENDING: 'En attente de validation', VALIDATED: 'Validée', REJECTED: 'Rejetée',
-    EXPIRED: 'Expirée', AMENDMENT_PENDING: 'Régularisation', AMENDED: 'Régularisée',
+    RECEIVED: 'Reçue', PAYMENT_PENDING: 'Paiement en attente',
+    PAYMENT_VALIDATION_PENDING: 'Validation paiement', PAID: 'Payée',
+    SIGNATURE_PENDING: 'Signature en attente', SIGNED: 'Signée',
+    VALIDATION_PENDING: 'En attente de validation', VALIDATED: 'Validée',
+    REJECTED: 'Rejetée', EXPIRED: 'Expirée',
+    AMENDMENT_PENDING: 'Régularisation', AMENDED: 'Régularisée',
     COMPLIANCE_INSEE_PENDING: 'En cours INSEE', ERROR_VALIDATION: 'Erreur validation',
   };
   return map[s] ?? s;
@@ -277,7 +191,7 @@ function colorStatut(s) {
   if (!s) return 'slate';
   if (['VALIDATED','VALIDATED_BO_AMENDMENT_SIGNED','VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING'].includes(s)) return 'green';
   if (['REJECTED','ERROR_VALIDATION','ERROR_DECLARATION_INSEE','ERROR_INSEE_EXISTS_PM'].includes(s)) return 'red';
-  if (['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED','AMENDMENT_PAYMENT_PENDING','AMENDMENT_PAID','AMENDED','VALIDATION_PENDING'].includes(s)) return 'amber';
+  if (['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED','AMENDMENT_PAYMENT_PENDING','AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID','AMENDED','VALIDATION_PENDING'].includes(s)) return 'amber';
   if (['RECEIVED','PAYMENT_PENDING','PAYMENT_VALIDATION_PENDING','PAID','SIGNATURE_PENDING','SIGNED','COMPLIANCE_INSEE_PENDING'].includes(s)) return 'blue';
   return 'slate';
 }
