@@ -100,7 +100,13 @@ export async function GET() {
       stats,
       total: formalites.length,
       formalites,
-      _raw_keys: Object.keys(raw || {}), // pour debug : montre la structure reçue
+      _debug: {
+        raw_keys: Object.keys(raw || {}),
+        data_type: typeof raw?.data,
+        data_is_array: Array.isArray(raw?.data),
+        data_keys: raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) ? Object.keys(raw.data) : null,
+        data_preview: JSON.stringify(raw?.data)?.slice(0, 500),
+      },
     });
 
   } catch (e) {
