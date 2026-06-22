@@ -152,170 +152,143 @@ function DocuSignCard({ env }) {
   );
 }
 
-// ── Panneau INPI (recherche par SIREN, data.inpi.fr, sans clé) ───────────────
+// ── Panneau INPI — connexion avec identifiants formalites.inpi.fr ─────────────
 
 function InpiPanel() {
-  const STORAGE_KEY = 'inpi_sirens';
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
+  const [search, setSearch]   = useState('');
+  const [filterStatut, setFilterStatut] = useState('tous');
 
-  function loadSirens() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
-  }
-  function saveSirens(list) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  }
-
-  const [sirens, setSirens] = useState([]);
-  const [results, setResults] = useState({});
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState({});
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const saved = loadSirens();
-    setSirens(saved);
-    saved.forEach(s => fetchSiren(s));
-  }, []);
-
-  async function fetchSiren(siren) {
-    setLoading(l => ({ ...l, [siren]: true }));
+  async function load() {
+    setLoading(true);
+    setError('');
     try {
-      const res = await fetch(`/api/inpi?siren=${siren}`);
-      const data = await res.json();
-      setResults(r => ({ ...r, [siren]: data }));
+      const res = await fetch('/api/inpi-auth');
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error + (json.hint ? '\n' + json.hint : ''));
+      setData(json);
     } catch (e) {
-      setResults(r => ({ ...r, [siren]: { ok: false, error: e.message } }));
+      setError(e.message);
     } finally {
-      setLoading(l => ({ ...l, [siren]: false }));
+      setLoading(false);
     }
   }
 
-  function addSiren(e) {
-    e.preventDefault();
-    const s = input.replace(/\s/g, '');
-    setError('');
-    if (!/^\d{9}$/.test(s)) { setError('SIREN invalide — 9 chiffres requis'); return; }
-    if (sirens.includes(s)) { setError('SIREN déjà suivi'); return; }
-    const next = [s, ...sirens];
-    setSirens(next);
-    saveSirens(next);
-    setInput('');
-    fetchSiren(s);
-  }
+  useEffect(() => { load(); }, []);
 
-  function removeSiren(siren) {
-    const next = sirens.filter(s => s !== siren);
-    setSirens(next);
-    saveSirens(next);
-    setResults(r => { const c = { ...r }; delete c[siren]; return c; });
-  }
+  const configured = true; // on tente toujours, l'erreur s'affiche si pas configuré
+
+  const formalites = (data?.formalites || []).filter(f => {
+    const matchSearch = !search ||
+      f.denomination?.toLowerCase().includes(search.toLowerCase()) ||
+      f.siren?.includes(search) ||
+      f.type?.toLowerCase().includes(search.toLowerCase()) ||
+      f.id?.toString().includes(search);
+    const matchStatut = filterStatut === 'tous' || f.statut === filterStatut;
+    return matchSearch && matchStatut;
+  });
+
+  const statuts = [...new Set((data?.formalites || []).map(f => f.statut).filter(Boolean))];
 
   return (
     <div className="space-y-4">
-      {/* Barre de recherche */}
-      <form onSubmit={addSiren} className="flex gap-2">
+      {/* Stats */}
+      {data?.stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: 'Régularisation', val: data.stats.en_attente_regularisation ?? data.stats.en_attente, color: 'amber' },
+            { label: 'Validation',     val: data.stats.en_attente_validation ?? data.stats.en_cours,       color: 'blue'  },
+            { label: 'Validées',       val: data.stats.validees ?? data.stats.valide,                      color: 'green' },
+            { label: 'Rejetées',       val: data.stats.rejetees ?? data.stats.rejete,                      color: 'red'   },
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-xl border border-slate-100 p-4 text-center">
+              <p className={`text-3xl font-bold ${
+                s.color === 'green' ? 'text-green-600' :
+                s.color === 'red'   ? 'text-red-500'   :
+                s.color === 'amber' ? 'text-amber-500' : 'text-blue-500'
+              }`}>{s.val ?? '—'}</p>
+              <p className="text-xs text-slate-500 mt-1">Formalités en {s.label.toLowerCase()}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Barre de contrôle */}
+      <div className="flex flex-wrap gap-2 items-center">
         <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="SIREN (9 chiffres) — ex: 123 456 789"
-          className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400 bg-slate-50"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Rechercher…"
+          className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-slate-50 w-48"
         />
-        <button type="submit" className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-xl transition-colors">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        <select
+          value={filterStatut}
+          onChange={e => setFilterStatut(e.target.value)}
+          className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-slate-50"
+        >
+          <option value="tous">Tous les statuts</option>
+          {statuts.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button onClick={load} disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-orange-600 bg-orange-50 border border-orange-200 rounded-xl hover:bg-orange-100 disabled:opacity-50 ml-auto">
+          <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          Suivre
+          Actualiser
         </button>
-      </form>
+      </div>
 
-      {error && <p className="text-xs text-red-500 px-1">{error}</p>}
+      {/* Erreurs */}
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 whitespace-pre-line">
+          <p className="font-semibold mb-1">Erreur de connexion INPI</p>
+          {error}
+        </div>
+      )}
 
-      <p className="text-xs text-slate-400 px-1">
-        Source : <span className="font-mono">data.inpi.fr</span> — Registre National des Entreprises, aucune clé requise.
-      </p>
+      {loading && !data && <Spinner />}
 
-      {/* Liste des SIREN suivis */}
-      {sirens.length === 0 && (
+      {/* Liste */}
+      {!loading && !error && formalites.length === 0 && data && (
         <div className="text-center py-14 text-slate-400">
-          <svg className="w-12 h-12 mx-auto mb-3 opacity-25" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
-          </svg>
-          <p className="text-sm">Ajoute un SIREN pour suivre une entreprise</p>
+          <p className="text-sm">Aucune formalité trouvée</p>
         </div>
       )}
 
       <div className="grid gap-3">
-        {sirens.map(siren => {
-          const r = results[siren];
-          const isLoading = loading[siren];
-          return (
-            <div key={siren} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
+        {formalites.map((f, i) => (
+          <div key={f.id || i} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-800 truncate">{f.denomination || `Dossier ${f.id}`}</p>
+                    {f.siren && <p className="text-xs text-slate-400 font-mono mt-0.5">{f.siren}</p>}
+                  </div>
+                  <Badge label={f.statut_label} color={f.statut_color} />
                 </div>
-                <div className="flex-1 min-w-0">
-                  {isLoading && (
-                    <div className="flex items-center gap-2 text-slate-400 text-sm">
-                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                      </svg>
-                      Recherche en cours…
-                    </div>
-                  )}
-                  {!isLoading && r && !r.ok && (
-                    <div>
-                      <p className="font-mono text-sm text-slate-500">{siren}</p>
-                      <p className="text-xs text-red-500 mt-1">{r.error}</p>
-                    </div>
-                  )}
-                  {!isLoading && r && r.ok && (
-                    <div>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-800 leading-snug">{r.denomination || '—'}</p>
-                          <p className="text-xs text-slate-400 font-mono mt-0.5">{siren}</p>
-                        </div>
-                        <Badge
-                          label={r.actif ? 'Actif' : 'Radié'}
-                          color={r.actif ? 'green' : 'red'}
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-slate-500">
-                        {r.formeJuridique && <span>{r.formeJuridique}</span>}
-                        {r.dateImmatriculation && <span>Immatriculée le {fmt(r.dateImmatriculation)}</span>}
-                        {r.capital && <span>Capital : {Number(r.capital).toLocaleString('fr-FR')} €</span>}
-                        {r.adresse && <span className="truncate max-w-xs">{r.adresse}</span>}
-                      </div>
-                    </div>
-                  )}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
+                  {f.type      && <span className="font-medium text-slate-600">{f.type}</span>}
+                  {f.date_depot && <span>Déposé le {fmt(f.date_depot)}</span>}
+                  {f.date_modif && <span>Modifié le {fmt(f.date_modif)}</span>}
+                  {f.id         && <span className="font-mono text-slate-300">#{f.id}</span>}
                 </div>
-                <div className="flex gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => fetchSiren(siren)}
-                    className="p-1.5 text-slate-300 hover:text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
-                    title="Actualiser"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => removeSiren(siren)}
-                    className="p-1.5 text-slate-300 hover:text-red-400 rounded-lg hover:bg-red-50 transition-colors"
-                    title="Retirer"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+                {f.commentaire && (
+                  <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                    {f.commentaire}
+                  </p>
+                )}
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </div>
   );
