@@ -11,11 +11,15 @@ export async function GET(request, { params }) {
   const { data: client, error } = await supabase.from('clients').select('*').eq('id', id).single();
   if (error || !client) return NextResponse.json({ error: 'Client introuvable' }, { status: 404 });
 
-  // Chemin vers le template DOCX
-  const templateFile = path.join(process.cwd(), 'templates', client.type_societe.toLowerCase(), `${type}.docx`);
-  if (!fs.existsSync(templateFile)) {
+  // Chemin vers le template DOCX — fallback vers sasu si le type n'a pas encore son dossier
+  const typeFolder = client.type_societe.toLowerCase().replace(/\s/g, '_');
+  const templateFile = path.join(process.cwd(), 'templates', typeFolder, `${type}.docx`);
+  const fallbackFile = path.join(process.cwd(), 'templates', 'sasu', `${type}.docx`);
+  const filePath = fs.existsSync(templateFile) ? templateFile : (fs.existsSync(fallbackFile) ? fallbackFile : null);
+
+  if (!filePath) {
     return NextResponse.json(
-      { error: `Template introuvable : templates/${client.type_societe.toLowerCase()}/${type}.docx` },
+      { error: `Template "${type}.docx" introuvable pour ${client.type_societe}. Déposez le fichier dans templates/${typeFolder}/${type}.docx` },
       { status: 404 }
     );
   }
@@ -62,7 +66,7 @@ export async function GET(request, { params }) {
   };
 
   try {
-    const content = fs.readFileSync(templateFile, 'binary');
+    const content = fs.readFileSync(filePath, 'binary');
     const zip = new PizZip(content);
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
     doc.render(vars);
