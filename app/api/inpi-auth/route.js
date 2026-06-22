@@ -1,80 +1,51 @@
 import { NextResponse } from 'next/server';
 
-/**
- * Connexion à formalites.inpi.fr avec email + mot de passe
- * puis récupération des formalités via leur API interne.
- *
- * Flow :
- * 1. POST /api/auth/login → récupère le JWT/cookie de session
- * 2. GET /api/formalites  → liste des dossiers authentifié
- */
+const BASE = 'https://procedures.inpi.fr';
+const CLIENT_VERSION = '1.27.0-1776089031331';
 
-const BASE = 'https://formalites.inpi.fr';
-
-// Cache session en mémoire (reset à chaque redéploiement Vercel)
 let cachedSession = null;
 let sessionExpires = 0;
 
 async function login() {
-  const email    = process.env.INPI_EMAIL;
+  const ref      = process.env.INPI_EMAIL;
   const password = process.env.INPI_PASSWORD;
 
-  if (!email || !password) {
+  if (!ref || !password) {
     throw new Error('INPI_EMAIL et INPI_PASSWORD manquants dans les variables Vercel');
   }
 
-  // Étape 1 : récupérer le CSRF token / page de login
-  const loginPage = await fetch(`${BASE}/login`, {
-    headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html' },
-    redirect: 'follow',
-  });
-
-  const cookies = loginPage.headers.get('set-cookie') || '';
-  const html = await loginPage.text();
-
-  // Extraire le CSRF token (champ _csrf ou xsrf selon leur implémentation)
-  const csrfMatch = html.match(/name="_csrf"\s+value="([^"]+)"/i)
-    || html.match(/name="csrf[_-]?token"\s+value="([^"]+)"/i)
-    || html.match(/"csrf[Tt]oken"\s*:\s*"([^"]+)"/);
-  const csrf = csrfMatch?.[1] || '';
-
-  // Extraire le cookie de session initial
-  const sessionCookie = extractCookies(cookies);
-
-  // Étape 2 : POST les identifiants
-  const loginRes = await fetch(`${BASE}/api/v1/auth/login`, {
+  const res = await fetch(`${BASE}/security/v1/inpiconnect/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0',
-      'Accept': 'application/json',
-      'Cookie': sessionCookie,
-      ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
+      Accept: 'application/json, text/*',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'x-client-version': CLIENT_VERSION,
+      Referer: `${BASE}/?/login`,
     },
-    body: JSON.stringify({ email, password }),
-    redirect: 'manual',
+    body: JSON.stringify({ ref, password }),
   });
 
-  // Si JSON → JWT token
-  let token = null;
-  let newCookies = loginRes.headers.get('set-cookie') || '';
-
-  if (loginRes.status >= 200 && loginRes.status < 400) {
-    const ct = loginRes.headers.get('content-type') || '';
-    if (ct.includes('application/json')) {
-      const data = await loginRes.json().catch(() => ({}));
-      token = data.token || data.access_token || data.jwt || null;
-    }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Login INPI échoué (${res.status}) : ${body.slice(0, 200)}`);
   }
 
-  const allCookies = mergeCookies(sessionCookie, newCookies);
-
-  if (!token && !allCookies) {
-    throw new Error(`Login échoué (statut ${loginRes.status}) — vérifiez INPI_EMAIL et INPI_PASSWORD`);
+  const json = await res.json();
+  if (!json?.data) {
+    throw new Error('Réponse login inattendue : ' + JSON.stringify(json).slice(0, 200));
   }
 
-  cachedSession = { token, cookies: allCookies };
-  sessionExpires = Date.now() + 55 * 60 * 1000; // 55 minutes
+  // Récupère tous les cookies Set-Cookie
+  const rawCookies = res.headers.getSetCookie?.() || [];
+  const cookieStr = rawCookies.map(c => c.split(';')[0]).join('; ');
+
+  if (!cookieStr) {
+    throw new Error('Aucun cookie reçu après login — identifiants incorrects ?');
+  }
+
+  cachedSession = { cookies: cookieStr };
+  sessionExpires = Date.now() + 50 * 60 * 1000; // 50 min
   return cachedSession;
 }
 
@@ -83,30 +54,32 @@ async function getSession() {
   return await login();
 }
 
-// Appel authentifié à l'API INPI
-async function inpiCall(path) {
+async function apiCall(path) {
   const session = await getSession();
 
-  const headers = {
-    'User-Agent': 'Mozilla/5.0',
-    Accept: 'application/json',
-    ...(session.token  ? { Authorization: `Bearer ${session.token}` } : {}),
-    ...(session.cookies ? { Cookie: session.cookies } : {}),
-  };
+  const res = await fetch(`${BASE}${path}`, {
+    headers: {
+      Accept: 'application/json, text/*',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'x-client-version': CLIENT_VERSION,
+      Referer: `${BASE}/`,
+      Cookie: session.cookies,
+    },
+  });
 
-  const res = await fetch(`${BASE}${path}`, { headers });
-
-  if (res.status === 401) {
-    // Session expirée → forcer re-login
+  if (res.status === 401 || res.status === 403) {
     cachedSession = null;
     const session2 = await login();
-    const headers2 = {
-      'User-Agent': 'Mozilla/5.0',
-      Accept: 'application/json',
-      ...(session2.token   ? { Authorization: `Bearer ${session2.token}` }  : {}),
-      ...(session2.cookies ? { Cookie: session2.cookies } : {}),
-    };
-    const res2 = await fetch(`${BASE}${path}`, { headers: headers2 });
+    const res2 = await fetch(`${BASE}${path}`, {
+      headers: {
+        Accept: 'application/json, text/*',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'x-client-version': CLIENT_VERSION,
+        Referer: `${BASE}/`,
+        Cookie: session2.cookies,
+      },
+    });
+    if (!res2.ok) throw new Error(`INPI ${path} : ${res2.status}`);
     return res2.json();
   }
 
@@ -114,90 +87,74 @@ async function inpiCall(path) {
   return res.json();
 }
 
-// ── GET /api/inpi-auth — stats + liste des formalités ────────────────────────
-
 export async function GET() {
   try {
-    // Tentatives sur plusieurs endpoints possibles de leur API interne
-    let formalites = [];
-    let stats = null;
+    const raw = await apiCall('/app/v1/website/all');
 
-    // Essai 1 : endpoint dashboard / statistiques
-    try {
-      const s = await inpiCall('/api/v1/dashboard/statistics');
-      stats = s;
-    } catch (_) {}
-
-    // Essai 2 : liste des formalités
-    try {
-      const f = await inpiCall('/api/v1/formalites?page=0&size=100&sort=dateDepot,desc');
-      formalites = f?.content || f?.formalites || f?.results || f || [];
-    } catch (_) {
-      // Essai 3 : autre chemin possible
-      try {
-        const f2 = await inpiCall('/api/formalites?page=1&limit=100');
-        formalites = f2?.data || f2?.items || f2 || [];
-      } catch (_) {}
-    }
-
-    // Calcul des stats depuis la liste si pas d'endpoint dédié
-    if (!stats && formalites.length > 0) {
-      stats = {
-        total:         formalites.length,
-        en_attente:    formalites.filter(f => ['EN_ATTENTE', 'ATTENTE_REGULARISATION', 'ATTENTE_VALIDATION'].includes(f.statut)).length,
-        validees:      formalites.filter(f => ['VALIDE', 'ENREGISTRE', 'VALIDEE'].includes(f.statut)).length,
-        rejetees:      formalites.filter(f => ['REJETE', 'REJETEE'].includes(f.statut)).length,
-        en_cours:      formalites.filter(f => ['EN_COURS', 'EN_COURS_DE_TRAITEMENT'].includes(f.statut)).length,
-      };
-    }
-
-    const normalized = formalites.map(f => ({
-      id:           f.numeroDossier || f.id || f.reference,
-      siren:        f.siren || f.entreprise?.siren,
-      denomination: f.raisonSociale || f.denomination || f.entreprise?.denomination || f.nomEntreprise,
-      type:         f.typeFormalite?.libelle || f.typeLibelle || f.type,
-      statut:       f.statut,
-      statut_label: labelStatut(f.statut),
-      statut_color: colorStatut(f.statut),
-      date_depot:   f.dateDepot || f.dateSoumission || f.createdAt,
-      date_modif:   f.dateModification || f.updatedAt,
-      commentaire:  f.commentaire || f.motifRejet || null,
-    }));
+    // Extraire les formalités depuis la réponse (structure à adapter selon le vrai retour)
+    const formalites = extractFormalites(raw);
+    const stats      = computeStats(formalites);
 
     return NextResponse.json({
       ok: true,
       stats,
-      total: normalized.length,
-      formalites: normalized,
+      total: formalites.length,
+      formalites,
+      _raw_keys: Object.keys(raw || {}), // pour debug : montre la structure reçue
     });
 
   } catch (e) {
-    // Si login échoue → donner des détails pour debug
     return NextResponse.json({
       ok: false,
       error: e.message,
-      hint: 'Vérifiez INPI_EMAIL et INPI_PASSWORD dans vos variables Vercel',
+      hint: 'Vérifiez INPI_EMAIL et INPI_PASSWORD dans les variables Vercel',
     }, { status: 500 });
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+function extractFormalites(raw) {
+  // /app/v1/website/all retourne probablement un tableau ou un objet avec des clés
+  if (Array.isArray(raw)) return raw.map(normalize);
 
-function extractCookies(setCookieHeader) {
-  if (!setCookieHeader) return '';
-  return setCookieHeader
-    .split(',')
-    .map(c => c.split(';')[0].trim())
-    .filter(Boolean)
-    .join('; ');
+  // Cherche la clé qui contient les formalités
+  for (const key of ['formalites', 'dossiers', 'procedures', 'data', 'items', 'results', 'content']) {
+    if (Array.isArray(raw?.[key])) return raw[key].map(normalize);
+  }
+
+  // Si c'est un objet avec des sous-tableaux, les concatène tous
+  const arrays = Object.values(raw || {}).filter(v => Array.isArray(v));
+  if (arrays.length) return arrays.flat().map(normalize);
+
+  return [];
 }
 
-function mergeCookies(existing, newCookies) {
-  const all = [existing, extractCookies(newCookies)].filter(Boolean).join('; ');
-  return all;
+function normalize(f) {
+  return {
+    id:           f.numeroDossier || f.id || f.reference || f.ref,
+    siren:        f.siren || f.entreprise?.siren || f.sirenEntreprise,
+    denomination: f.raisonSociale || f.denomination || f.entreprise?.denomination || f.nomEntreprise || f.nom,
+    type:         f.typeFormalite?.libelle || f.typeLibelle || f.type || f.nature,
+    statut:       f.statut || f.etat || f.status,
+    statut_label: labelStatut(f.statut || f.etat || f.status),
+    statut_color: colorStatut(f.statut || f.etat || f.status),
+    date_depot:   f.dateDepot || f.dateSoumission || f.dateCreation || f.createdAt,
+    date_modif:   f.dateModification || f.dateMaj || f.updatedAt,
+    commentaire:  f.commentaire || f.motifRejet || f.observation || null,
+  };
+}
+
+function computeStats(list) {
+  return {
+    total:    list.length,
+    validees: list.filter(f => ['VALIDE','VALIDEE','ENREGISTRE','IMMATRICULE'].includes(f.statut?.toUpperCase())).length,
+    rejetees: list.filter(f => ['REJETE','REJETEE','REFUSE','REFUSEE'].includes(f.statut?.toUpperCase())).length,
+    en_attente_regularisation: list.filter(f => f.statut?.toUpperCase().includes('REGULARISATION')).length,
+    en_attente_validation:     list.filter(f => f.statut?.toUpperCase().includes('VALIDATION')).length,
+  };
 }
 
 function labelStatut(s) {
+  if (!s) return '—';
   const map = {
     EN_ATTENTE:              'En attente',
     ATTENTE_REGULARISATION:  'Régularisation',
@@ -206,19 +163,22 @@ function labelStatut(s) {
     VALIDE:                  'Validée',
     VALIDEE:                 'Validée',
     ENREGISTRE:              'Enregistrée',
+    IMMATRICULE:             'Immatriculée',
     REJETE:                  'Rejetée',
     REJETEE:                 'Rejetée',
+    REFUSE:                  'Refusée',
     BROUILLON:               'Brouillon',
     CLASSE_SANS_SUITE:       'Classée sans suite',
   };
-  return map[s] || s || '—';
+  return map[s.toUpperCase()] || s;
 }
 
 function colorStatut(s) {
-  if (['VALIDE','VALIDEE','ENREGISTRE'].includes(s)) return 'green';
-  if (['REJETE','REJETEE'].includes(s)) return 'red';
-  if (['ATTENTE_REGULARISATION','ATTENTE_VALIDATION'].includes(s)) return 'amber';
-  if (['EN_COURS_DE_TRAITEMENT','EN_COURS'].includes(s)) return 'blue';
-  if (s === 'BROUILLON') return 'slate';
+  if (!s) return 'slate';
+  const u = s.toUpperCase();
+  if (['VALIDE','VALIDEE','ENREGISTRE','IMMATRICULE'].includes(u)) return 'green';
+  if (['REJETE','REJETEE','REFUSE','REFUSEE'].includes(u)) return 'red';
+  if (u.includes('REGULARISATION') || u.includes('VALIDATION')) return 'amber';
+  if (u.includes('COURS') || u.includes('TRAITEMENT')) return 'blue';
   return 'slate';
 }
