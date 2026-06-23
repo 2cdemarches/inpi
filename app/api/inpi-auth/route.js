@@ -36,27 +36,28 @@ async function storeTokens(userId, bearer, refresh, expiresInMs = 100 * 60 * 100
 // ── Login INPI avec email + mdp ───────────────────────────────────────────────
 async function loginToInpi(email, password) {
   // Essayer plusieurs endpoints/formats connus
+  const headers = { Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Origin: GU };
   const attempts = [
-    { url: `${GU}/api/login`, body: { email, password } },
-    { url: `${GU}/api/login`, body: { email, motDePasse: password } },
-    { url: `${GU}/api/login`, body: { email, mot_de_passe: password } },
-    { url: `${GU}/api/login`, body: { email, mdp: password } },
-    { url: `${GU}/api/login`, body: { email, pass: password } },
+    // JSON
+    { url: `${GU}/api/login`, ct: 'application/json', body: JSON.stringify({ email, password }) },
+    // Form-encoded
+    { url: `${GU}/api/login`, ct: 'application/x-www-form-urlencoded', body: new URLSearchParams({ email, password }).toString() },
+    { url: `${GU}/api/login`, ct: 'application/x-www-form-urlencoded', body: new URLSearchParams({ login: email, password }).toString() },
   ];
 
   let lastError = '';
-  for (const { url, body } of attempts) {
+  for (const { url, ct, body } of attempts) {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Origin: GU },
-      body: JSON.stringify(body),
+      headers: { ...headers, 'Content-Type': ct },
+      body,
     }).catch(() => null);
     if (!res || res.status === 404 || res.status === 405) continue;
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      lastError = `${res.status} sur ${url} — ${txt.slice(0, 200)}`;
-      continue; // essayer le suivant
+      lastError = `${res.status} sur ${url} [${ct}] — ${txt.slice(0, 200)}`;
+      continue;
     }
 
     const setCookies = getSetCookies(res);
