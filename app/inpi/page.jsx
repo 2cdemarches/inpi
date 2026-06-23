@@ -20,7 +20,9 @@ function Badge({ label, color = 'slate' }) {
 }
 
 export default function InpiPage() {
-  const [data, setData]       = useState(null);
+  const [data, setData]       = useState(() => {
+    try { const c = localStorage.getItem('inpi_cache'); return c ? JSON.parse(c) : null; } catch { return null; }
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [search, setSearch]   = useState('');
@@ -33,6 +35,7 @@ export default function InpiPage() {
       const json = await res.json();
       if (json.error) throw new Error(json.error);
       setData(json);
+      try { localStorage.setItem('inpi_cache', JSON.stringify(json)); } catch {}
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
@@ -80,7 +83,7 @@ export default function InpiPage() {
 
       <div className="px-6 py-6 max-w-6xl mx-auto space-y-6">
         {/* Stats */}
-        {!loading && !error && (
+        {(!loading || data) && !error && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: 'Validées',         val: stats.validees,                  color: 'text-green-600', bg: 'bg-green-50 border-green-100', key: 'validees' },
@@ -103,7 +106,7 @@ export default function InpiPage() {
           className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
 
         {/* États */}
-        {loading && <p className="text-center text-slate-400 py-16">Chargement des formalités…</p>}
+        {loading && !data && <p className="text-center text-slate-400 py-16">Chargement des formalités…</p>}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-sm text-red-600">
             <p className="font-semibold mb-1">Erreur de connexion INPI</p>
@@ -113,7 +116,7 @@ export default function InpiPage() {
         )}
 
         {/* Liste */}
-        {!loading && !error && (
+        {(!loading || data) && !error && (
           <div className="space-y-2">
             {filtered.length === 0 && <p className="text-center text-slate-400 py-10 text-sm">Aucun résultat</p>}
             {filtered.map((f, i) => (
