@@ -170,7 +170,12 @@ export default function Dashboard() {
     setShowSettings(false);
   }
 
-  function openNew() { setEditClient(null); setForm(EMPTY_FORM); setShowForm(true); }
+  function openNew() {
+    const today = new Date().toLocaleDateString('fr-FR');
+    setEditClient(null);
+    setForm({ ...EMPTY_FORM, date_signature: today });
+    setShowForm(true);
+  }
   function openEdit(c) { setEditClient(c); setForm({ ...EMPTY_FORM, ...c }); setShowForm(true); setSelected(null); }
 
   async function save() {
@@ -568,7 +573,13 @@ export default function Dashboard() {
                   <Field label="Dénomination *" span={2}><input value={form.denomination} onChange={e => setForm({...form, denomination: e.target.value})} className={inp} /></Field>
                   <Field label="Type de société"><select value={form.type_societe} onChange={e => setForm({...form, type_societe: e.target.value})} className={inp}>{TYPES_SOCIETE.map(t => <option key={t}>{t}</option>)}</select></Field>
                   <Field label="Capital (€)"><input type="number" value={form.capital} onChange={e => setForm({...form, capital: parseInt(e.target.value)||0})} className={inp} /></Field>
-                  <Field label="Siège social *" span={2}><input value={form.siege_social} onChange={e => setForm({...form, siege_social: e.target.value})} placeholder="Adresse complète" className={inp} /></Field>
+                  <Field label="Siège social *" span={2}><input value={form.siege_social} onChange={e => {
+                    const v = e.target.value;
+                    // Extraire la ville : derniers mots après le code postal (5 chiffres)
+                    const m = v.match(/\d{5}\s+(.+)$/);
+                    const ville = m ? m[1].trim() : '';
+                    setForm({...form, siege_social: v, ville_siege: ville || form.ville_siege, ville_signature: form.ville_signature || ville});
+                  }} placeholder="Adresse complète" className={inp} /></Field>
                   <Field label="Ville du siège"><input value={form.ville_siege} onChange={e => setForm({...form, ville_siege: e.target.value})} className={inp} /></Field>
                   <Field label="Nombre d'actions"><input type="number" value={form.nb_actions} onChange={e => setForm({...form, nb_actions: parseInt(e.target.value)||0})} className={inp} /></Field>
                   <Field label="Objet social" span={2}><textarea value={form.objet_social} onChange={e => setForm({...form, objet_social: e.target.value})} rows={3} className={inp} /></Field>
@@ -592,8 +603,13 @@ export default function Dashboard() {
 
               <FormSection title="Signature & Suivi">
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Date signature"><input value={form.date_signature} onChange={e => setForm({...form, date_signature: e.target.value})} placeholder="JJ/MM/AAAA" className={inp} /></Field>
-                  <Field label="Ville signature"><input value={form.ville_signature} onChange={e => setForm({...form, ville_signature: e.target.value})} className={inp} /></Field>
+                  <Field label="Date signature"><input value={form.date_signature} onChange={e => {
+                    let v = e.target.value.replace(/\D/g, '').slice(0, 8);
+                    if (v.length >= 5) v = v.slice(0,2) + '/' + v.slice(2,4) + '/' + v.slice(4);
+                    else if (v.length >= 3) v = v.slice(0,2) + '/' + v.slice(2);
+                    setForm({...form, date_signature: v});
+                  }} placeholder="JJ/MM/AAAA" maxLength={10} className={inp} /></Field>
+                  <Field label="Ville signature"><input value={form.ville_signature} onChange={e => setForm({...form, ville_signature: e.target.value})} placeholder={form.ville_siege || ''} className={inp} /></Field>
                   <Field label="ID Enveloppe DocuSign" span={2}><input value={form.docusign_envelope_id} onChange={e => setForm({...form, docusign_envelope_id: e.target.value})} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inp} /></Field>
                   <Field label="Notes" span={2}><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} rows={2} className={inp} /></Field>
                 </div>
