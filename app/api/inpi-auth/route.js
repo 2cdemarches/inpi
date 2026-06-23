@@ -45,6 +45,7 @@ async function loginToInpi(email, password) {
       'User-Agent': UA,
       Origin: PROC,
       Referer: `${PROC}/?/login`,
+      'X-Client-Version': '1.27.0-1776089031331',
     },
     body: JSON.stringify({ ref: email, password }),
   }).catch(e => { throw new Error(`Connexion INPI impossible : ${e.message}`); });
