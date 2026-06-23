@@ -19,7 +19,7 @@ const CSS = `
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Tahoma, Arial, sans-serif; font-size: 10.5pt; line-height: 1.15; color: #000; background: #fff; }
 
-p.statuts-titre { text-align: center; font-weight: bold; font-size: 22pt; margin: 0; }
+p.statuts-titre { text-align: center; font-weight: bold; font-size: 18pt; margin: 0; }
 p.entete2.cover-top { margin-top: 9cm; }
 p.entete2.page-break { page-break-before: always; margin-top: 0; font-size: 10.5pt; }
 p.entete2.page-break ~ p.entete2, p.entete2.page-break ~ p.entete3 { font-size: 10.5pt; }
@@ -29,9 +29,9 @@ p.doc-title { font-weight: bold; text-align: center; font-size: 14pt; margin: 0 
 p.efl-titre { font-weight: bold; text-align: center; font-size: 10.5pt; margin: 4pt 0 2pt; }
 p.efl-cellule { margin: 0; font-size: 10pt; }
 p.para-liste { margin-left: 0.8cm; text-align: justify; line-height: 1.4; margin-bottom: 7pt; }
-p.soussigne { margin-top: 48pt; }
+p.soussigne { margin-top: 30pt; }
 
-p { margin: 0 0 12pt 0; text-align: justify; line-height: 1.5; }
+p { margin: 0 0 8pt 0; text-align: justify; line-height: 1.35; }
 p.titre-section { margin-top: 14pt; margin-bottom: 2pt; line-height: 1.3; font-size: 10.5pt; }
 p.titre-section strong { font-size: 10.5pt; letter-spacing: 0.04em; word-spacing: 0.15em; }
 p.titre-section br { display: block; margin: 0; }
