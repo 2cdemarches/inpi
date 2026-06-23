@@ -108,9 +108,8 @@ async function getBearer(userId, inpiLogin, inpiPassword) {
   }
 
   // 3. Re-login avec les credentials
-  if (!inpiLogin || !inpiPassword) {
-    throw new Error('Identifiants INPI non configurés. Allez dans ⚙️ Paramètres pour renseigner votre login et mot de passe INPI.');
-  }
+  if (!inpiLogin) throw new Error('Login INPI manquant. Renseignez-le dans ⚙️ Paramètres.');
+  if (!inpiPassword) throw new Error('Mot de passe INPI manquant. Renseignez-le dans ⚙️ Paramètres (et enregistrez).');
   const { bearer, refresh: newRefresh } = await loginToInpi(inpiLogin, inpiPassword);
   await storeTokens(userId, bearer, newRefresh);
   return bearer;
