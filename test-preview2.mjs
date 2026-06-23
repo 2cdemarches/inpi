@@ -38,7 +38,7 @@ p.titre-section br { display: block; margin: 0; }
 ul, ol { margin: 2pt 0 7pt 1.1cm; padding: 0; }
 li { margin: 0 0 4pt 0; text-align: justify; line-height: 1.4; }
 p.list-para { margin-left: 1cm; text-align: justify; }
-div.etat-titre { border: 1px solid #000; text-align: center; font-weight: bold; font-size: 9pt; padding: 5pt 10pt; margin: 22pt 0 16pt 0; background: #f0f0f0; }
+div.etat-titre { border: 1px solid #000; text-align: center; font-weight: bold; font-size: 7.5pt; padding: 4pt 10pt; margin: 32pt 0 24pt 0; background: #f0f0f0; }
 table { width: 100%; border-collapse: collapse; margin: 6pt 0; font-size: 10pt; }
 td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
 th { font-weight: bold; text-align: center; background: #f0f0f0; }
