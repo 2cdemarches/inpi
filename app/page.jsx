@@ -126,6 +126,9 @@ export default function Dashboard() {
   const [saving, setSaving]         = useState(false);
   const [selected, setSelected]     = useState(null);
   const [newStatut, setNewStatut]   = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '' });
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const loadClients = useCallback(async () => {
     setLoading(true);
@@ -136,6 +139,17 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { loadClients(); }, [loadClients]);
+
+  useEffect(() => {
+    fetch('/api/settings').then(r => r.json()).then(d => setSettings(d)).catch(() => {});
+  }, []);
+
+  async function saveSettings() {
+    setSavingSettings(true);
+    await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
+    setSavingSettings(false);
+    setShowSettings(false);
+  }
 
   function openNew() { setEditClient(null); setForm(EMPTY_FORM); setShowForm(true); }
   function openEdit(c) { setEditClient(c); setForm({ ...EMPTY_FORM, ...c }); setShowForm(true); setSelected(null); }
@@ -225,6 +239,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2">
             <a href="/signature" className="px-3 py-2 text-sm text-blue-600 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 font-medium">✍️ Signatures</a>
             <a href="/inpi"      className="px-3 py-2 text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-xl hover:bg-orange-100 font-medium">🏛️ INPI</a>
+            <button onClick={() => setShowSettings(true)} className="px-3 py-2 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 font-medium">⚙️ Paramètres</button>
             <button onClick={openNew}
               className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -423,6 +438,42 @@ export default function Dashboard() {
       </div>
 
       {/* Modal formulaire */}
+      {/* Modal Paramètres cabinet */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-bold text-slate-800">Paramètres du cabinet</h2>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-xs text-slate-500">Ces informations apparaissent dans la procuration (pouvoir).</p>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Nom du cabinet mandataire</label>
+                <input value={settings.nom_cabinet} onChange={e => setSettings(s => ({ ...s, nom_cabinet: e.target.value }))}
+                  placeholder="ex : MC CONSEIL" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Représentant du cabinet</label>
+                <input value={settings.representant_cabinet} onChange={e => setSettings(s => ({ ...s, representant_cabinet: e.target.value }))}
+                  placeholder="ex : Monsieur CELNIK" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Adresse du cabinet</label>
+                <input value={settings.adresse_cabinet} onChange={e => setSettings(s => ({ ...s, adresse_cabinet: e.target.value }))}
+                  placeholder="ex : 35 Boulevard de la Muette 95140 Garges Les Gonesse" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
+              <button onClick={() => setShowSettings(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Annuler</button>
+              <button onClick={saveSettings} disabled={savingSettings} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                {savingSettings ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center overflow-y-auto py-8 px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-auto">

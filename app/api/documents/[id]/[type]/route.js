@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getClient, validateClient, findSource, generatePdf } from '@/lib/generate-doc';
+import { createClient } from '@supabase/supabase-js';
+
+async function getSettings() {
+  const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  const { data } = await sb.from('settings').select('*').eq('id', 1).single();
+  return data || {};
+}
 
 export const maxDuration = 60;
 
@@ -22,7 +29,8 @@ export async function GET(request, { params }) {
       );
     }
 
-    const pdfBuf = await generatePdf(sourcePath, type, client);
+    const settings = await getSettings();
+    const pdfBuf = await generatePdf(sourcePath, type, client, settings);
     const filename = `${DOC_LABELS[type] || type}_${client.denomination.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
 
     return new NextResponse(pdfBuf, {

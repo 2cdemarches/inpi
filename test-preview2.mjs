@@ -31,6 +31,7 @@ p.efl-titre { font-weight: bold; text-align: center; font-size: 10.5pt; margin: 
 p.efl-cellule { margin: 0; font-size: 10pt; }
 p.para-liste { margin-left: 0.8cm; text-align: justify; line-height: 1.4; margin-bottom: 7pt; }
 p.soussigne { margin-top: 30pt; }
+p.je-soussigne { margin-top: 56pt; }
 
 p { margin: 0 0 14pt 0; text-align: justify; line-height: 1.35; }
 p.titre-section { margin-top: 14pt; margin-bottom: 2pt; line-height: 1.3; font-size: 10.5pt; }
@@ -71,6 +72,7 @@ for (const [name, file] of [
   // Titres de section
   html = html.replace(/<p>(?=<strong>TITRE\s)/g, '<p class="titre-section">');
   html = html.replace(/<p>Le soussigné\s*:/g, '<p class="soussigne">Le soussigné :');
+  html = html.replace(/<p>Je soussigné/g, '<p class="je-soussigne">Je soussigné');
   const etatRe = /<p[^>]*>ETAT DES SOUSCRIPTIONS ET DES VERSEMENTS<\/p>/i;
   if (etatRe.test(html)) {
     html = html.replace(etatRe, '');

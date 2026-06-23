@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import JSZip from 'jszip';
 import { getClient, validateClient, findSource, generatePdf } from '@/lib/generate-doc';
+import { createClient } from '@supabase/supabase-js';
+
+async function getSettings() {
+  const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  const { data } = await sb.from('settings').select('*').eq('id', 1).single();
+  return data || {};
+}
 
 export const maxDuration = 60;
 
@@ -24,11 +31,13 @@ export async function GET(request, { params }) {
     const zip    = new JSZip();
     const errors = [];
 
+    const settings = await getSettings();
+
     await Promise.all(DOCS.map(async ({ type, label }) => {
       const sourcePath = findSource(client.type_societe, type);
       if (!sourcePath) { errors.push(`${label} : modèle manquant pour ${client.type_societe}`); return; }
       try {
-        const pdfBuf = await generatePdf(sourcePath, type, client);
+        const pdfBuf = await generatePdf(sourcePath, type, client, settings);
         zip.file(`${label}_${nom}.pdf`, pdfBuf);
       } catch (e) {
         errors.push(`${label} : ${e.message}`);
