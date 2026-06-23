@@ -111,13 +111,12 @@ async function getBearer(userId, settingsBearer, settingsRefresh) {
 
 // ── Appel API guichet-unique ──────────────────────────────────────────────────
 async function guCall(path, bearer, userId) {
-  const res = await fetch(`${GU}${path}`, {
-    headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${bearer}` },
-  });
+  const hdrs = { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${bearer}` };
+  const res = await fetch(`${GU}${path}`, { headers: hdrs });
 
   if (res.status === 401) {
-    await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', userId);
-    throw new Error('Session INPI expirée. Reconnectez-vous sur guichet-unique.inpi.fr, copiez le cookie BEARER et collez-le dans ⚙️ Paramètres.');
+    await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', userId).catch(() => {});
+    throw new Error('BEARER INPI refusé (401). Le token a peut-être expiré. Reconnectez-vous sur guichet-unique.inpi.fr et copiez un nouveau BEARER dans ⚙️ Paramètres.');
   }
 
   if (!res.ok) throw new Error(`INPI ${res.status} sur ${path}`);
@@ -131,8 +130,8 @@ export async function GET() {
     const sb = await createSupabaseServer();
     const { data: settings } = await sb.from('settings').select('inpi_bearer,inpi_refresh_token').eq('user_id', user.id).single();
 
-    const settingsBearer  = settings?.inpi_bearer        || process.env.INPI_BEARER        || null;
-    const settingsRefresh = settings?.inpi_refresh_token || process.env.INPI_REFRESH_TOKEN || null;
+    const settingsBearer  = (settings?.inpi_bearer        || process.env.INPI_BEARER        || '').trim() || null;
+    const settingsRefresh = (settings?.inpi_refresh_token || process.env.INPI_REFRESH_TOKEN || '').trim() || null;
 
     const bearer = await getBearer(user.id, settingsBearer, settingsRefresh);
 
