@@ -3,6 +3,7 @@ import { createSupabaseServer, requireUser } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
 
 const GU = 'https://guichet-unique.inpi.fr';
+const PROC = 'https://procedures.inpi.fr';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 function adminSb() {
@@ -36,27 +37,31 @@ async function storeTokens(userId, bearer, refresh, expiresInMs = 100 * 60 * 100
 // ── Login INPI avec email + mdp ───────────────────────────────────────────────
 async function loginToInpi(email, password) {
   // Essayer plusieurs endpoints/formats connus
-  const headers = { Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Origin: GU };
   const attempts = [
-    // JSON
-    { url: `${GU}/api/login`, ct: 'application/json', body: JSON.stringify({ email, password }) },
-    // Form-encoded
-    { url: `${GU}/api/login`, ct: 'application/x-www-form-urlencoded', body: new URLSearchParams({ email, password }).toString() },
-    { url: `${GU}/api/login`, ct: 'application/x-www-form-urlencoded', body: new URLSearchParams({ login: email, password }).toString() },
+    // procedures.inpi.fr — endpoint réel utilisé par le site
+    { url: `${PROC}/security/v1/inpiconnect/login`, origin: PROC, referer: `${PROC}/?/login` },
+    // guichet-unique.inpi.fr — fallback
+    { url: `${GU}/api/login`, origin: GU, referer: `${GU}/` },
   ];
 
   let lastError = '';
-  for (const { url, ct, body } of attempts) {
+  for (const { url, origin, referer } of attempts) {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { ...headers, 'Content-Type': ct },
-      body,
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        Accept: 'application/json, text/*',
+        'User-Agent': UA,
+        Origin: origin,
+        Referer: referer,
+      },
+      body: JSON.stringify({ email, password }),
     }).catch(() => null);
     if (!res || res.status === 404 || res.status === 405) continue;
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      lastError = `${res.status} sur ${url} [${ct}] — ${txt.slice(0, 200)}`;
+      lastError = `${res.status} sur ${url} — ${txt.slice(0, 200)}`;
       continue;
     }
 
