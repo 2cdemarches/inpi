@@ -28,6 +28,7 @@ p.doc-title { font-weight: bold; text-align: center; font-size: 14pt; margin: 0 
 p.efl-titre { font-weight: bold; text-align: center; font-size: 10.5pt; margin: 4pt 0 2pt; }
 p.efl-cellule { margin: 0; font-size: 10pt; }
 p.para-liste { margin-left: 0.8cm; text-align: justify; line-height: 1.4; margin-bottom: 7pt; }
+p.soussigne { margin-top: 48pt; }
 
 p { margin: 0 0 12pt 0; text-align: justify; line-height: 1.5; }
 p.titre-section { margin-top: 14pt; margin-bottom: 2pt; line-height: 1.3; font-size: 10.5pt; }
@@ -66,6 +67,7 @@ for (const [name, file] of [
   html = html.replace(/<p>(<strong>STATUTS<\/strong>)<\/p>/gi, '<p class="statuts-titre">$1</p>');
   // Titres de section
   html = html.replace(/<p>(?=<strong>TITRE\s)/g, '<p class="titre-section">');
+  html = html.replace(/<p>Le soussigné\s*:/g, '<p class="soussigne">Le soussigné :');
   const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${CSS}</style></head><body>${html}</body></html>`;
   fs.writeFileSync(`C:/Users/conta/Desktop/preview2-${name}.html`, full);
   console.log(`✅ preview2-${name}.html`);
