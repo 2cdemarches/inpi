@@ -87,48 +87,37 @@ async function tryRefresh(bearer, refreshToken) {
 }
 
 // ── Obtenir un BEARER valide pour ce user ─────────────────────────────────────
-async function getBearer(userId, inpiLogin, inpiPassword) {
-  // 1. Token encore valide en cache
-  const stored = await getStoredToken(userId);
-  if (stored) return stored;
+async function getBearer(userId, settingsBearer, settingsRefresh) {
+  // 1. Token encore valide en cache Supabase
+  const cached = await getStoredToken(userId);
+  if (cached) return cached;
 
-  // 2. Essayer le refresh
-  const refresh = await getStoredRefresh(userId);
-  if (refresh) {
-    const storedBearer = await adminSb().from('tokens').select('value').eq('key', 'inpi_bearer').eq('user_id', userId).single().then(r => r.data?.value ?? '');
-    const renewed = await tryRefresh(storedBearer, refresh).catch(() => null);
+  // 2. Essayer le refresh (depuis cache ou settings)
+  const refreshToken = (await getStoredRefresh(userId)) ?? settingsRefresh ?? null;
+  const currentBearer = settingsBearer || '';
+  if (refreshToken && currentBearer) {
+    const renewed = await tryRefresh(currentBearer, refreshToken).catch(() => null);
     if (renewed) {
       await storeTokens(userId, renewed.bearer, renewed.refresh);
       return renewed.bearer;
     }
   }
 
-  // 3. Re-login avec les credentials
-  if (!inpiLogin) throw new Error('Login INPI manquant. Renseignez-le dans ⚙️ Paramètres.');
-  if (!inpiPassword) throw new Error('Mot de passe INPI manquant. Renseignez-le dans ⚙️ Paramètres (et enregistrez).');
-  const { bearer, refresh: newRefresh } = await loginToInpi(inpiLogin, inpiPassword);
-  await storeTokens(userId, bearer, newRefresh);
-  return bearer;
+  // 3. Utiliser le BEARER des settings directement
+  if (!settingsBearer) throw new Error('BEARER INPI manquant. Connectez-vous sur guichet-unique.inpi.fr, copiez le cookie BEARER et collez-le dans ⚙️ Paramètres.');
+  await storeTokens(userId, settingsBearer, settingsRefresh, 90 * 60 * 1000);
+  return settingsBearer;
 }
 
 // ── Appel API guichet-unique ──────────────────────────────────────────────────
-async function guCall(path, bearer, userId, inpiLogin, inpiPassword) {
+async function guCall(path, bearer, userId) {
   const res = await fetch(`${GU}${path}`, {
     headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${bearer}` },
   });
 
   if (res.status === 401) {
-    // Token refusé — invalider et re-login
     await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', userId);
-    if (!inpiLogin || !inpiPassword) throw new Error('Session INPI expirée. Renseignez vos identifiants dans ⚙️ Paramètres.');
-    const { bearer: newBearer, refresh } = await loginToInpi(inpiLogin, inpiPassword);
-    await storeTokens(userId, newBearer, refresh);
-    // Retry
-    const retry = await fetch(`${GU}${path}`, {
-      headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${newBearer}` },
-    });
-    if (!retry.ok) throw new Error(`INPI ${retry.status}`);
-    return retry.json();
+    throw new Error('Session INPI expirée. Reconnectez-vous sur guichet-unique.inpi.fr, copiez le cookie BEARER et collez-le dans ⚙️ Paramètres.');
   }
 
   if (!res.ok) throw new Error(`INPI ${res.status} sur ${path}`);
@@ -140,12 +129,12 @@ export async function GET() {
   try {
     const user = await requireUser();
     const sb = await createSupabaseServer();
-    const { data: settings } = await sb.from('settings').select('inpi_login,inpi_password').eq('user_id', user.id).single();
+    const { data: settings } = await sb.from('settings').select('inpi_bearer,inpi_refresh_token').eq('user_id', user.id).single();
 
-    const inpiLogin    = settings?.inpi_login    || process.env.INPI_LOGIN    || null;
-    const inpiPassword = settings?.inpi_password || process.env.INPI_PASSWORD || null;
+    const settingsBearer  = settings?.inpi_bearer        || process.env.INPI_BEARER        || null;
+    const settingsRefresh = settings?.inpi_refresh_token || process.env.INPI_REFRESH_TOKEN || null;
 
-    const bearer = await getBearer(user.id, inpiLogin, inpiPassword);
+    const bearer = await getBearer(user.id, settingsBearer, settingsRefresh);
 
     const ALL_STATUSES = [
       'RECEIVED','PAYMENT_VALIDATION_PENDING','PAID','SIGNATURE_PENDING','PAYMENT_PENDING',
@@ -158,7 +147,7 @@ export async function GET() {
 
     let formalites = [];
     for (let page = 1; page <= 20; page++) {
-      const data = await guCall(`/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`, bearer, user.id, inpiLogin, inpiPassword);
+      const data = await guCall(`/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`, bearer, user.id);
       const items = buildList(data);
       formalites = formalites.concat(items);
       const total = data?.['hydra:totalItems'] ?? data?.totalItems ?? null;

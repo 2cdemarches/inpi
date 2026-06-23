@@ -35,9 +35,9 @@ create table settings (
   docusign_private_key text default '',
   docusign_env text default 'production',
 
-  -- INPI guichet
-  inpi_login text default '',
-  inpi_password text default ''
+  -- INPI guichet (bearer manuel + refresh)
+  inpi_bearer text default '',
+  inpi_refresh_token text default ''
 );
 
 -- 3. Row Level Security
