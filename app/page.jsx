@@ -142,6 +142,9 @@ export default function Dashboard() {
   const [saving, setSaving]         = useState(false);
   const [selected, setSelected]     = useState(null);
   const [newStatut, setNewStatut]   = useState('');
+  const [modeles, setModeles]       = useState([]);
+  const [showSaveModele, setShowSaveModele] = useState(false);
+  const [nomModele, setNomModele]   = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '', docusign_integration_key: '', docusign_user_id: '', docusign_account_id: '', docusign_private_key: '', docusign_env: 'production', inpi_login: '', inpi_password: '' });
   const [savingSettings, setSavingSettings] = useState(false);
@@ -158,6 +161,13 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { loadClients(); }, [loadClients]);
+
+  const loadModeles = useCallback(async () => {
+    const res = await fetch('/api/modeles');
+    const json = await res.json();
+    if (json.ok) setModeles(json.modeles);
+  }, []);
+  useEffect(() => { loadModeles(); }, [loadModeles]);
 
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(d => setSettings(d)).catch(() => {});
@@ -547,6 +557,27 @@ export default function Dashboard() {
               </div>
 
             </div>
+
+            {/* Section Modèles d'objet social */}
+            <div className="px-6 py-4 border-t border-slate-100">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Modèles d'objet social</p>
+              {modeles.length === 0
+                ? <p className="text-xs text-slate-400">Aucun modèle sauvegardé.</p>
+                : <div className="space-y-2">
+                    {modeles.map(m => (
+                      <div key={m.id} className="flex items-start justify-between gap-2 p-2 bg-slate-50 rounded-lg">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-700">{m.nom}</p>
+                          <p className="text-xs text-slate-400 truncate">{m.objet_social?.slice(0, 80)}…</p>
+                        </div>
+                        <button onClick={async () => { await fetch(`/api/modeles/${m.id}`, {method:'DELETE'}); await loadModeles(); }}
+                          className="flex-shrink-0 text-red-400 hover:text-red-600 text-xs">Supprimer</button>
+                      </div>
+                    ))}
+                  </div>
+              }
+            </div>
+
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
               <button onClick={() => setShowSettings(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Annuler</button>
               <button onClick={saveSettings} disabled={savingSettings} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
@@ -572,7 +603,7 @@ export default function Dashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Dénomination *" span={2}><input value={form.denomination} onChange={e => setForm({...form, denomination: e.target.value})} className={inp} /></Field>
                   <Field label="Type de société"><select value={form.type_societe} onChange={e => setForm({...form, type_societe: e.target.value})} className={inp}>{TYPES_SOCIETE.map(t => <option key={t}>{t}</option>)}</select></Field>
-                  <Field label="Capital (€)"><input type="number" value={form.capital} onChange={e => setForm({...form, capital: parseInt(e.target.value)||0})} className={inp} /></Field>
+                  <Field label="Capital (€)"><input type="number" value={form.capital} onChange={e => { const v = parseInt(e.target.value)||0; setForm({...form, capital: v, nb_actions: v}); }} className={inp} /></Field>
                   <Field label="Siège social *" span={2}><input value={form.siege_social} onChange={e => {
                     const v = e.target.value;
                     // Extraire la ville : derniers mots après le code postal (5 chiffres)
@@ -582,7 +613,17 @@ export default function Dashboard() {
                   }} placeholder="Adresse complète" className={inp} /></Field>
                   <Field label="Ville du siège"><input value={form.ville_siege} onChange={e => setForm({...form, ville_siege: e.target.value})} className={inp} /></Field>
                   <Field label="Nombre d'actions"><input type="number" value={form.nb_actions} onChange={e => setForm({...form, nb_actions: parseInt(e.target.value)||0})} className={inp} /></Field>
-                  <Field label="Objet social" span={2}><textarea value={form.objet_social} onChange={e => setForm({...form, objet_social: e.target.value})} rows={3} className={inp} /></Field>
+                  <Field label="Objet social" span={2}>
+                    {modeles.length > 0 && (
+                      <select className={`${inp} mb-2`} value="" onChange={e => { if (e.target.value) { const m = modeles.find(m => m.id === e.target.value); if (m) setForm({...form, objet_social: m.objet_social}); }}}>
+                        <option value="">— Charger un modèle —</option>
+                        {modeles.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
+                      </select>
+                    )}
+                    <textarea value={form.objet_social} onChange={e => setForm({...form, objet_social: e.target.value})} rows={4} className={inp} placeholder="Objet social de la société…" />
+                    <button type="button" onClick={() => { setNomModele(''); setShowSaveModele(true); }}
+                      className="mt-1 text-xs text-indigo-600 hover:underline">+ Sauvegarder comme modèle</button>
+                  </Field>
                 </div>
               </FormSection>
 
@@ -624,6 +665,30 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
+
+          {/* Modal sauvegarde modèle */}
+          {showSaveModele && (
+            <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+                <h3 className="font-bold text-slate-800">Sauvegarder comme modèle</h3>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Nom du modèle</label>
+                  <input value={nomModele} onChange={e => setNomModele(e.target.value)} autoFocus
+                    placeholder="ex : Vente de voitures" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <p className="text-xs text-slate-400 bg-slate-50 rounded-lg p-3 line-clamp-3">{form.objet_social || '(objet social vide)'}</p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setShowSaveModele(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Annuler</button>
+                  <button onClick={async () => {
+                    if (!nomModele.trim()) return;
+                    await fetch('/api/modeles', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ nom: nomModele.trim(), objet_social: form.objet_social }) });
+                    await loadModeles();
+                    setShowSaveModele(false);
+                  }} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Sauvegarder</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
