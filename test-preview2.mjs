@@ -29,9 +29,9 @@ p.efl-titre { font-weight: bold; text-align: center; font-size: 10.5pt; margin: 
 p.efl-cellule { margin: 0; font-size: 10pt; }
 p.para-liste { margin-left: 0.8cm; text-align: justify; line-height: 1.4; margin-bottom: 7pt; }
 
-p { margin: 0 0 7pt 0; text-align: justify; line-height: 1.4; }
-p.titre-section { margin-top: 14pt; margin-bottom: 2pt; line-height: 1.3; font-size: 13pt; }
-p.titre-section strong { font-size: 13pt; letter-spacing: 0.04em; word-spacing: 0.15em; }
+p { margin: 0 0 12pt 0; text-align: justify; line-height: 1.5; }
+p.titre-section { margin-top: 14pt; margin-bottom: 2pt; line-height: 1.3; font-size: 10.5pt; }
+p.titre-section strong { font-size: 10.5pt; letter-spacing: 0.04em; word-spacing: 0.15em; }
 p.titre-section br { display: block; margin: 0; }
 ul, ol { margin: 2pt 0 7pt 1.1cm; padding: 0; }
 li { margin: 0 0 4pt 0; text-align: justify; line-height: 1.4; }
