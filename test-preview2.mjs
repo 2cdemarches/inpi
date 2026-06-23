@@ -21,7 +21,8 @@ body { font-family: Tahoma, Arial, sans-serif; font-size: 10.5pt; line-height: 1
 
 p.statuts-titre { text-align: center; font-weight: bold; font-size: 22pt; margin: 0; }
 p.entete2.cover-top { margin-top: 9cm; }
-p.entete2.page-break { page-break-before: always; margin-top: 0; }
+p.entete2.page-break { page-break-before: always; margin-top: 0; font-size: 10.5pt; }
+p.entete2.page-break ~ p.entete2, p.entete2.page-break ~ p.entete3 { font-size: 10.5pt; }
 p.entete2 { font-weight: bold; text-align: center; font-size: 20pt; font-variant: small-caps; margin: 0 0 4pt 0; line-height: 1.35; }
 p.entete3 { font-weight: bold; text-align: center; font-size: 18pt; font-variant: small-caps; margin: 0 0 4pt 0; line-height: 1.35; }
 p.doc-title { font-weight: bold; text-align: center; font-size: 14pt; margin: 0 0 6pt 0; letter-spacing: 1px; }
