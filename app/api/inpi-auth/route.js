@@ -115,7 +115,7 @@ async function guCall(path, bearer, userId) {
   const res = await fetch(`${GU}${path}`, { headers: hdrs });
 
   if (res.status === 401) {
-    await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', userId).catch(() => {});
+    try { await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', userId); } catch {}
     throw new Error('BEARER INPI refusé (401). Le token a peut-être expiré. Reconnectez-vous sur guichet-unique.inpi.fr et copiez un nouveau BEARER dans ⚙️ Paramètres.');
   }
 
