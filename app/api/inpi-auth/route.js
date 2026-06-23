@@ -88,24 +88,26 @@ async function tryRefresh(bearer, refreshToken) {
 
 // ── Obtenir un BEARER valide pour ce user ─────────────────────────────────────
 async function getBearer(userId, settingsBearer, settingsRefresh) {
-  // 1. Token encore valide en cache Supabase
-  const cached = await getStoredToken(userId);
-  if (cached) return cached;
+  if (!settingsBearer) throw new Error('BEARER INPI manquant. Connectez-vous sur guichet-unique.inpi.fr, copiez le cookie BEARER et collez-le dans ⚙️ Paramètres.');
 
-  // 2. Essayer le refresh (depuis cache ou settings)
-  const refreshToken = (await getStoredRefresh(userId)) ?? settingsRefresh ?? null;
-  const currentBearer = settingsBearer || '';
-  if (refreshToken && currentBearer) {
-    const renewed = await tryRefresh(currentBearer, refreshToken).catch(() => null);
-    if (renewed) {
-      await storeTokens(userId, renewed.bearer, renewed.refresh);
-      return renewed.bearer;
+  // Toujours utiliser le bearer des settings — plus fiable que le cache
+  // Le cache est utilisé uniquement si le bearer en settings n'a pas changé
+  const cached = await getStoredToken(userId);
+
+  // Essayer le refresh si on a un refresh token
+  if (cached) {
+    const refreshToken = settingsRefresh ?? (await getStoredRefresh(userId));
+    if (refreshToken) {
+      const renewed = await tryRefresh(cached, refreshToken).catch(() => null);
+      if (renewed) {
+        await storeTokens(userId, renewed.bearer, renewed.refresh);
+        return renewed.bearer;
+      }
     }
+    return cached;
   }
 
-  // 3. Utiliser le BEARER des settings directement
-  if (!settingsBearer) throw new Error('BEARER INPI manquant. Connectez-vous sur guichet-unique.inpi.fr, copiez le cookie BEARER et collez-le dans ⚙️ Paramètres.');
-  await storeTokens(userId, settingsBearer, settingsRefresh, 90 * 60 * 1000);
+  // Pas de cache : utiliser le bearer des settings directement
   return settingsBearer;
 }
 
@@ -115,8 +117,8 @@ async function guCall(path, bearer, userId) {
   const res = await fetch(`${GU}${path}`, { headers: hdrs });
 
   if (res.status === 401) {
-    try { await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', userId); } catch {}
-    throw new Error('BEARER INPI refusé (401). Le token a peut-être expiré. Reconnectez-vous sur guichet-unique.inpi.fr et copiez un nouveau BEARER dans ⚙️ Paramètres.');
+    try { await adminSb().from('tokens').delete().in('key', ['inpi_bearer', 'inpi_refresh']).eq('user_id', userId); } catch {}
+    throw new Error('BEARER INPI refusé (401). Le token a expiré (durée 2h). Reconnectez-vous sur guichet-unique.inpi.fr, copiez un nouveau cookie BEARER et collez-le dans ⚙️ Paramètres.');
   }
 
   if (!res.ok) throw new Error(`INPI ${res.status} sur ${path}`);
