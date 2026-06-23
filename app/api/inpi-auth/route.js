@@ -1,143 +1,120 @@
 import { NextResponse } from 'next/server';
+import { createSupabaseServer, requireUser } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
-
-/**
- * BEARER INPI expire en ~2h.
- * On stocke le token rafraîchi dans Supabase pour persister entre les appels serverless.
- * INPI_BEARER + INPI_REFRESH_TOKEN dans Vercel = valeurs initiales / de secours.
- */
 
 const GU = 'https://guichet-unique.inpi.fr';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
+function adminSb() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-// ── Lecture / écriture token dans Supabase ────────────────────────────────────
-async function getStoredToken() {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb.from('tokens').select('value,expires_at').eq('key', 'inpi_bearer').single();
+// ── Tokens par user dans Supabase ─────────────────────────────────────────────
+async function getStoredToken(userId) {
+  const { data } = await adminSb().from('tokens').select('value,expires_at')
+    .eq('key', 'inpi_bearer').eq('user_id', userId).single();
   if (!data) return null;
-  // Valide si expire dans plus de 5 min
-  if (data.expires_at && new Date(data.expires_at) > new Date(Date.now() + 5 * 60 * 1000)) {
-    return data.value;
-  }
-  return null; // expiré
+  if (data.expires_at && new Date(data.expires_at) > new Date(Date.now() + 5 * 60 * 1000)) return data.value;
+  return null;
 }
 
-async function getStoredRefresh() {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb.from('tokens').select('value').eq('key', 'inpi_refresh').single();
+async function getStoredRefresh(userId) {
+  const { data } = await adminSb().from('tokens').select('value')
+    .eq('key', 'inpi_refresh').eq('user_id', userId).single();
   return data?.value ?? null;
 }
 
-async function storeTokens(bearer, refresh, expiresInMs = 100 * 60 * 1000) {
-  const sb = getSupabase();
-  if (!sb) return;
+async function storeTokens(userId, bearer, refresh, expiresInMs = 100 * 60 * 1000) {
+  const sb = adminSb();
   const expiresAt = new Date(Date.now() + expiresInMs).toISOString();
-  await sb.from('tokens').upsert({ key: 'inpi_bearer', value: bearer, expires_at: expiresAt, updated_at: new Date().toISOString() });
+  await sb.from('tokens').upsert({ key: 'inpi_bearer', user_id: userId, value: bearer, expires_at: expiresAt, updated_at: new Date().toISOString() }, { onConflict: 'key,user_id' });
   if (refresh) {
-    await sb.from('tokens').upsert({ key: 'inpi_refresh', value: refresh, expires_at: null, updated_at: new Date().toISOString() });
+    await sb.from('tokens').upsert({ key: 'inpi_refresh', user_id: userId, value: refresh, expires_at: null, updated_at: new Date().toISOString() }, { onConflict: 'key,user_id' });
   }
 }
 
-// ── Refresh du BEARER via le REFRESH_TOKEN ────────────────────────────────────
-async function tryRefresh(currentBearer, refreshToken) {
-  const headers = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-    'User-Agent': UA,
-    Referer: `${GU}/`,
-    Origin: GU,
-    Cookie: `BEARER=${currentBearer}; REFRESH_TOKEN=${refreshToken}`,
-  };
+// ── Login INPI avec email + mdp ───────────────────────────────────────────────
+async function loginToInpi(email, password) {
+  const res = await fetch(`${GU}/api/sso/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Origin: GU },
+    body: JSON.stringify({ username: email, password }),
+  });
+  if (!res.ok) throw new Error(`Identifiants INPI invalides (${res.status}). Vérifiez le login et mot de passe dans ⚙️ Paramètres.`);
+  const setCookies = getSetCookies(res);
+  const cookies = parseCookies(setCookies);
+  if (!cookies['BEARER']) {
+    const json = await res.json().catch(() => ({}));
+    const token = json.token ?? json.access_token ?? json.bearer;
+    if (!token) throw new Error('Connexion INPI échouée : aucun token reçu.');
+    return { bearer: token, refresh: json.refresh_token ?? null };
+  }
+  return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? null };
+}
 
+// ── Refresh du BEARER ─────────────────────────────────────────────────────────
+async function tryRefresh(bearer, refreshToken) {
   const res = await fetch(`${GU}/api/token/refresh`, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Origin: GU, Cookie: `BEARER=${bearer}; REFRESH_TOKEN=${refreshToken}` },
     body: JSON.stringify({ refresh_token: refreshToken }),
   }).catch(() => null);
-
-  if (res) {
-    const setCookies = getSetCookies(res);
-    const cookies = parseCookies(setCookies);
-    if (cookies['BEARER']) {
-      return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
-    }
-    if (res.ok) {
-      const json = await res.json().catch(() => ({}));
-      const token = json.token ?? json.access_token ?? json.bearer;
-      if (token) return { bearer: token, refresh: json.refresh_token ?? refreshToken };
-    }
+  if (!res) return null;
+  const setCookies = getSetCookies(res);
+  const cookies = parseCookies(setCookies);
+  if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
+  if (res.ok) {
+    const json = await res.json().catch(() => ({}));
+    const token = json.token ?? json.access_token ?? json.bearer;
+    if (token) return { bearer: token, refresh: json.refresh_token ?? refreshToken };
   }
   return null;
 }
 
-// ── Obtenir un BEARER valide ──────────────────────────────────────────────────
-async function getBearer() {
-  // 1. Chercher dans Supabase un token encore valide
-  const stored = await getStoredToken();
+// ── Obtenir un BEARER valide pour ce user ─────────────────────────────────────
+async function getBearer(userId, inpiLogin, inpiPassword) {
+  // 1. Token encore valide en cache
+  const stored = await getStoredToken(userId);
   if (stored) return stored;
 
-  // 2. Récupérer les valeurs de base
-  const envBearer  = process.env.INPI_BEARER;
-  const envRefresh = process.env.INPI_REFRESH_TOKEN;
-  if (!envBearer) throw new Error('INPI_BEARER manquant dans Vercel → Settings → Environment Variables');
-
-  // 3. Essayer de rafraîchir avec le refresh token (Supabase d'abord, puis env var)
-  const refreshToken = (await getStoredRefresh()) ?? envRefresh;
-  if (refreshToken) {
-    const renewed = await tryRefresh(envBearer, refreshToken).catch(() => null);
+  // 2. Essayer le refresh
+  const refresh = await getStoredRefresh(userId);
+  if (refresh) {
+    const storedBearer = await adminSb().from('tokens').select('value').eq('key', 'inpi_bearer').eq('user_id', userId).single().then(r => r.data?.value ?? '');
+    const renewed = await tryRefresh(storedBearer, refresh).catch(() => null);
     if (renewed) {
-      await storeTokens(renewed.bearer, renewed.refresh);
+      await storeTokens(userId, renewed.bearer, renewed.refresh);
       return renewed.bearer;
     }
   }
 
-  // 4. Utiliser le BEARER de l'env var directement (peut fonctionner s'il vient d'être mis à jour)
-  // On le stocke aussi pour ne pas re-tester pendant 90min
-  await storeTokens(envBearer, envRefresh, 90 * 60 * 1000);
-  return envBearer;
+  // 3. Re-login avec les credentials
+  if (!inpiLogin || !inpiPassword) {
+    throw new Error('Identifiants INPI non configurés. Allez dans ⚙️ Paramètres pour renseigner votre login et mot de passe INPI.');
+  }
+  const { bearer, refresh: newRefresh } = await loginToInpi(inpiLogin, inpiPassword);
+  await storeTokens(userId, bearer, newRefresh);
+  return bearer;
 }
 
 // ── Appel API guichet-unique ──────────────────────────────────────────────────
-async function guCall(path, bearerOverride) {
-  const bearer = bearerOverride ?? await getBearer();
-
+async function guCall(path, bearer, userId, inpiLogin, inpiPassword) {
   const res = await fetch(`${GU}${path}`, {
     headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${bearer}` },
   });
 
   if (res.status === 401) {
-    // Token refusé — invalider le stockage et réessayer une fois
-    const sb = getSupabase();
-    if (sb) await sb.from('tokens').delete().eq('key', 'inpi_bearer');
-
-    const envBearer  = process.env.INPI_BEARER;
-    const envRefresh = process.env.INPI_REFRESH_TOKEN;
-    const refreshToken = (await getStoredRefresh()) ?? envRefresh;
-
-    if (refreshToken) {
-      const renewed = await tryRefresh(envBearer ?? '', refreshToken).catch(() => null);
-      if (renewed) {
-        await storeTokens(renewed.bearer, renewed.refresh);
-        return guCall(path, renewed.bearer);
-      }
-    }
-
-    throw new Error(
-      'Token INPI expiré. Reconnectez-vous sur guichet-unique.inpi.fr puis :\n' +
-      '1. F12 → Application → Cookies → guichet-unique.inpi.fr\n' +
-      '2. Copiez BEARER → Vercel > INPI_BEARER\n' +
-      '3. Copiez REFRESH_TOKEN → Vercel > INPI_REFRESH_TOKEN\n' +
-      '4. Redéployez'
-    );
+    // Token refusé — invalider et re-login
+    await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', userId);
+    if (!inpiLogin || !inpiPassword) throw new Error('Session INPI expirée. Renseignez vos identifiants dans ⚙️ Paramètres.');
+    const { bearer: newBearer, refresh } = await loginToInpi(inpiLogin, inpiPassword);
+    await storeTokens(userId, newBearer, refresh);
+    // Retry
+    const retry = await fetch(`${GU}${path}`, {
+      headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${newBearer}` },
+    });
+    if (!retry.ok) throw new Error(`INPI ${retry.status}`);
+    return retry.json();
   }
 
   if (!res.ok) throw new Error(`INPI ${res.status} sur ${path}`);
@@ -147,6 +124,15 @@ async function guCall(path, bearerOverride) {
 // ── Route GET /api/inpi-auth ──────────────────────────────────────────────────
 export async function GET() {
   try {
+    const user = await requireUser();
+    const sb = await createSupabaseServer();
+    const { data: settings } = await sb.from('settings').select('inpi_login,inpi_password').eq('user_id', user.id).single();
+
+    const inpiLogin    = settings?.inpi_login    || process.env.INPI_LOGIN    || null;
+    const inpiPassword = settings?.inpi_password || process.env.INPI_PASSWORD || null;
+
+    const bearer = await getBearer(user.id, inpiLogin, inpiPassword);
+
     const ALL_STATUSES = [
       'RECEIVED','PAYMENT_VALIDATION_PENDING','PAID','SIGNATURE_PENDING','PAYMENT_PENDING',
       'SIGNED','AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED',
@@ -158,16 +144,15 @@ export async function GET() {
 
     let formalites = [];
     for (let page = 1; page <= 20; page++) {
-      const listData = await guCall(`/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`);
-      const items = buildList(listData);
+      const data = await guCall(`/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`, bearer, user.id, inpiLogin, inpiPassword);
+      const items = buildList(data);
       formalites = formalites.concat(items);
-      const hydraTotal = listData?.['hydra:totalItems'] ?? listData?.totalItems ?? null;
-      if (hydraTotal !== null && formalites.length >= hydraTotal) break;
+      const total = data?.['hydra:totalItems'] ?? data?.totalItems ?? null;
+      if (total !== null && formalites.length >= total) break;
       if (items.length < 50) break;
     }
 
     return NextResponse.json({ ok: true, stats: buildStatsFromList(formalites), total: formalites.length, formalites });
-
   } catch (e) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }

@@ -2,6 +2,18 @@
 -- MIGRATION MULTI-TENANT — à coller dans Supabase SQL Editor
 -- ═══════════════════════════════════════════════════════════════
 
+-- 0. Table tokens : ajouter user_id + contrainte unique (key, user_id)
+alter table tokens add column if not exists user_id uuid references auth.users(id) on delete cascade;
+-- Supprimer l'ancienne contrainte unique sur key seul si elle existe
+alter table tokens drop constraint if exists tokens_key_key;
+alter table tokens drop constraint if exists tokens_pkey;
+-- Nouvelle clé primaire composite
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'tokens_key_user_id_key') then
+    alter table tokens add constraint tokens_key_user_id_key unique (key, user_id);
+  end if;
+end $$;
+
 -- 1. Ajouter user_id sur clients
 alter table clients add column if not exists user_id uuid references auth.users(id) on delete cascade;
 
