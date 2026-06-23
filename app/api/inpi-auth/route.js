@@ -36,35 +36,50 @@ async function storeTokens(userId, bearer, refresh, expiresInMs = 100 * 60 * 100
 
 // ── Login INPI avec email + mdp ───────────────────────────────────────────────
 async function loginToInpi(email, password) {
-  // Login sur procedures.inpi.fr — le token reçu est valide sur guichet-unique.inpi.fr (domaine .inpi.fr partagé)
-  const res = await fetch(`${PROC}/security/v1/inpiconnect/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=UTF-8',
-      Accept: 'application/json, text/*',
-      'User-Agent': UA,
-      Origin: PROC,
-      Referer: `${PROC}/?/login`,
-      'X-Client-Version': '1.27.0-1776089031331',
-    },
-    body: JSON.stringify({ ref: email, password }),
-  }).catch(e => { throw new Error(`Connexion INPI impossible : ${e.message}`); });
+  // Essayer plusieurs endpoints et formats de credentials
+  const attempts = [
+    // guichet-unique direct
+    { url: `${GU}/api/sso/login`,                       body: { login: email, password }, origin: GU,   referer: `${GU}/` },
+    { url: `${GU}/api/login`,                            body: { login: email, password }, origin: GU,   referer: `${GU}/` },
+    { url: `${GU}/api/login`,                            body: { email, password },        origin: GU,   referer: `${GU}/` },
+    // procedures.inpi.fr
+    { url: `${PROC}/security/v1/inpiconnect/login`,      body: { login: email, password }, origin: PROC, referer: `${PROC}/?/login` },
+    { url: `${PROC}/security/v1/inpiconnect/login`,      body: { email, password },        origin: PROC, referer: `${PROC}/?/login` },
+  ];
 
-  if (!res.ok) {
+  let lastErr = '';
+  for (const { url, body, origin, referer } of attempts) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        Accept: 'application/json, text/*',
+        'User-Agent': UA,
+        Origin: origin,
+        Referer: referer,
+        'X-Client-Version': '1.27.0-1776089031331',
+      },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+
+    if (!res) continue;
+
+    if (res.ok || res.status === 200) {
+      const json = await res.json().catch(() => ({}));
+      const bearer = json.token ?? json.access_token ?? json.bearer ?? json.jwt;
+      if (bearer) return { bearer, refresh: json.refresh_token ?? null };
+      const cookies = parseCookies(getSetCookies(res));
+      if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? null };
+    }
+
     const txt = await res.text().catch(() => '');
-    throw new Error(`Identifiants INPI invalides (${res.status}). Vérifiez le login et mot de passe dans ⚙️ Paramètres. Détail : ${txt.slice(0, 150)}`);
+    lastErr = `${res.status} ${txt.slice(0, 150)}`;
+
+    // 401 = mauvais mdp (inutile d'essayer d'autres formats)
+    if (res.status === 401) break;
   }
 
-  const json = await res.json().catch(() => ({}));
-  // Le token JWT reçu = BEARER utilisé sur guichet-unique.inpi.fr
-  const bearer = json.token ?? json.access_token ?? json.bearer ?? json.jwt;
-  if (bearer) return { bearer, refresh: json.refresh_token ?? null };
-
-  // Fallback : cookie BEARER
-  const cookies = parseCookies(getSetCookies(res));
-  if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? null };
-
-  throw new Error('Connexion INPI : token non trouvé dans la réponse : ' + JSON.stringify(json).slice(0, 200));
+  throw new Error(`Identifiants INPI invalides. Vérifiez email et mot de passe dans ⚙️ Paramètres. Détail : ${lastErr}`);
 }
 
 // ── Refresh du BEARER ─────────────────────────────────────────────────────────
