@@ -38,12 +38,16 @@ async function loginToInpi(email, password) {
   // Essayer plusieurs endpoints/formats connus
   const attempts = [
     { url: `${GU}/api/login`,     body: { login: email, password } },
+    { url: `${GU}/api/login`,     body: { email, password } },
     { url: `${GU}/api/login`,     body: { username: email, password } },
     { url: `${GU}/api/sso/login`, body: { login: email, password } },
+    { url: `${GU}/api/sso/login`, body: { email, password } },
     { url: `${GU}/api/sso/login`, body: { username: email, password } },
     { url: `${GU}/login`,         body: { login: email, password } },
+    { url: `${GU}/login`,         body: { email, password } },
   ];
 
+  let lastError = '';
   for (const { url, body } of attempts) {
     const res = await fetch(url, {
       method: 'POST',
@@ -52,7 +56,11 @@ async function loginToInpi(email, password) {
     }).catch(() => null);
     if (!res || res.status === 404 || res.status === 405) continue;
 
-    if (!res.ok) throw new Error(`Identifiants INPI invalides (${res.status}). Vérifiez le login et mot de passe dans ⚙️ Paramètres.`);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      lastError = `${res.status} sur ${url} — ${txt.slice(0, 200)}`;
+      continue; // essayer le suivant
+    }
 
     const setCookies = getSetCookies(res);
     const cookies = parseCookies(setCookies);
@@ -63,7 +71,7 @@ async function loginToInpi(email, password) {
     if (token) return { bearer: token, refresh: json.refresh_token ?? null };
   }
 
-  throw new Error('Connexion INPI échouée : endpoint introuvable. Vérifiez vos identifiants dans ⚙️ Paramètres.');
+  throw new Error(`Connexion INPI échouée : ${lastError || 'endpoint introuvable'}. Vérifiez vos identifiants dans ⚙️ Paramètres.`);
 }
 
 // ── Refresh du BEARER ─────────────────────────────────────────────────────────
