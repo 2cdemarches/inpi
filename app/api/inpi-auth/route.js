@@ -46,7 +46,7 @@ async function loginToInpi(email, password) {
       Origin: PROC,
       Referer: `${PROC}/?/login`,
     },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ ref: email, password }),
   }).catch(e => { throw new Error(`Connexion INPI impossible : ${e.message}`); });
 
   if (!res.ok) {
