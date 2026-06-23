@@ -97,53 +97,53 @@ async function tryRefresh(bearer, refreshToken) {
   return null;
 }
 
-// ── Obtenir un BEARER valide (avec auto-login si credentials dispo) ────────────
+// ── Obtenir un BEARER valide ───────────────────────────────────────────────────
 async function getBearer(userId, creds) {
   // 1. Token en cache encore valide ?
   const cached = await getStoredToken(userId);
   if (cached) return cached;
 
-  // 2. Refresh token disponible ?
+  // 2. Refresh automatique avec le refresh token (longue durée)
   const refreshToken = creds.refresh ?? (await getStoredRefresh(userId));
-  if (refreshToken && creds.bearer) {
-    const renewed = await tryRefresh(creds.bearer, refreshToken).catch(() => null);
+  if (refreshToken) {
+    const currentBearer = creds.bearer ?? '';
+    const renewed = await tryRefresh(currentBearer, refreshToken).catch(() => null);
     if (renewed) {
       await storeTokens(userId, renewed.bearer, renewed.refresh);
       return renewed.bearer;
     }
   }
 
-  // 3. Auto-login avec email + mot de passe
-  if (creds.email && creds.password) {
-    const { bearer, refresh } = await loginToInpi(creds.email, creds.password);
-    await storeTokens(userId, bearer, refresh);
-    return bearer;
+  // 3. Bearer manuel des settings (sans cache = premier appel ou après expiration totale)
+  if (creds.bearer) {
+    // Stocker pour la prochaine fois (durée 110 min)
+    await storeTokens(userId, creds.bearer, refreshToken || null, 110 * 60 * 1000);
+    return creds.bearer;
   }
 
-  // 4. Bearer manuel des settings (fallback)
-  if (creds.bearer) return creds.bearer;
-
-  throw new Error('Renseignez vos identifiants INPI (email + mot de passe) dans ⚙️ Paramètres pour la connexion automatique.');
+  throw new Error('Token INPI expiré. Reconnectez-vous sur guichet-unique.inpi.fr, copiez BEARER et REFRESH_TOKEN dans ⚙️ Paramètres.');
 }
 
-// ── Appel API guichet-unique (avec retry auto-login sur 401) ──────────────────
+// ── Appel API guichet-unique (avec retry refresh sur 401) ─────────────────────
 async function guCall(path, bearer, userId, creds) {
   const hdrs = { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Referer: `${GU}/`, Cookie: `BEARER=${bearer}` };
   const res = await fetch(`${GU}${path}`, { headers: hdrs });
 
   if (res.status === 401) {
-    // Invalider le cache
-    try { await adminSb().from('tokens').delete().in('key', ['inpi_bearer', 'inpi_refresh']).eq('user_id', userId); } catch {}
+    // Invalider le cache et tenter un refresh
+    try { await adminSb().from('tokens').delete().in('key', ['inpi_bearer']).eq('user_id', userId); } catch {}
 
-    // Retry avec reconnexion automatique si credentials disponibles
-    if (creds?.email && creds?.password) {
-      const { bearer: newBearer, refresh } = await loginToInpi(creds.email, creds.password);
-      await storeTokens(userId, newBearer, refresh);
-      const res2 = await fetch(`${GU}${path}`, { headers: { ...hdrs, Cookie: `BEARER=${newBearer}` } });
-      if (res2.ok) return res2.json();
+    const refreshToken = creds.refresh ?? (await getStoredRefresh(userId));
+    if (refreshToken) {
+      const renewed = await tryRefresh(bearer, refreshToken).catch(() => null);
+      if (renewed) {
+        await storeTokens(userId, renewed.bearer, renewed.refresh);
+        const res2 = await fetch(`${GU}${path}`, { headers: { ...hdrs, Cookie: `BEARER=${renewed.bearer}` } });
+        if (res2.ok) return res2.json();
+      }
     }
 
-    throw new Error('Connexion INPI échouée (401). Vérifiez vos identifiants dans ⚙️ Paramètres.');
+    throw new Error('Session INPI expirée. Reconnectez-vous sur guichet-unique.inpi.fr et copiez BEARER + REFRESH_TOKEN dans ⚙️ Paramètres.');
   }
 
   if (!res.ok) throw new Error(`INPI ${res.status} sur ${path}`);
@@ -160,8 +160,6 @@ export async function GET() {
     const creds = {
       bearer:   (settings?.inpi_bearer        || process.env.INPI_BEARER        || '').trim() || null,
       refresh:  (settings?.inpi_refresh_token || process.env.INPI_REFRESH_TOKEN || '').trim() || null,
-      email:    (settings?.inpi_login         || process.env.INPI_LOGIN         || '').trim() || null,
-      password: (settings?.inpi_password      || process.env.INPI_PASSWORD      || '').trim() || null,
     };
 
     const bearer = await getBearer(user.id, creds);
