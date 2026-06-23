@@ -26,6 +26,7 @@ function newForm() {
     nom_pere: '', nom_mere: '',
     denomination: '', type_societe: 'SASU', capital: 100,
     siege_social: '', ville_siege: '', objet_social: DEFAULT_OBJET_SOCIAL,
+    adresse: '', adresse_cp: '', adresse_ville: '',
     nb_actions: 100, date_signature: '', ville_signature: '',
     docusign_envelope_id: '', notes: '',
   };
@@ -390,7 +391,7 @@ export default function Dashboard() {
               {/* Infos président */}
               <Section title="Président / Associé unique">
                 <Row label="Identité" value={`${selected.civilite} ${selected.prenom} ${selected.nom}`} />
-                <Row label="Né(e) le" value={`${selected.date_naissance} à ${selected.ville_naissance} (${selected.cp_naissance})`} />
+                <Row label="Né(e) le" value={`${selected.date_naissance} à ${selected.ville_naissance} ${selected.cp_naissance}`} />
                 <Row label="Nationalité" value={selected.nationalite} />
                 <Row label="Adresse" value={selected.adresse} />
                 {selected.nom_pere && <Row label="Père" value={selected.nom_pere} />}
@@ -641,7 +642,11 @@ export default function Dashboard() {
                   <Field label="Date de naissance *"><input value={form.date_naissance} onChange={e => setForm({...form, date_naissance: e.target.value})} placeholder="JJ/MM/AAAA" className={inp} /></Field>
                   <Field label="Ville de naissance *"><input value={form.ville_naissance} onChange={e => setForm({...form, ville_naissance: e.target.value})} className={inp} /></Field>
                   <Field label="Code postal naissance"><input value={form.cp_naissance} onChange={e => setForm({...form, cp_naissance: e.target.value})} placeholder="92100 ou 99" className={inp} /></Field>
-                  <Field label="Adresse personnelle *" span={2}><input value={form.adresse} onChange={e => setForm({...form, adresse: e.target.value})} placeholder="Adresse complète" className={inp} /></Field>
+                  <Field label="Adresse personnelle *" span={2}><input value={form.adresse} onChange={e => {
+                    const v = e.target.value;
+                    const m = v.match(/(\d{5})\s+(.+)$/);
+                    setForm({...form, adresse: v, adresse_cp: m ? m[1] : form.adresse_cp, adresse_ville: m ? m[2].trim() : form.adresse_ville});
+                  }} placeholder="ex: 10 rue Jean Jaurès 95200 Sarcelles" className={inp} /></Field>
                   <Field label="Père (DNC)"><input value={form.nom_pere} onChange={e => setForm({...form, nom_pere: e.target.value})} placeholder="Prénom NOM" className={inp} /></Field>
                   <Field label="Mère (DNC)"><input value={form.nom_mere} onChange={e => setForm({...form, nom_mere: e.target.value})} placeholder="Prénom NOM" className={inp} /></Field>
                 </div>
