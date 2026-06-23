@@ -30,8 +30,8 @@ p.efl-cellule { margin: 0; font-size: 10pt; }
 p.para-liste { margin-left: 0.8cm; text-align: justify; line-height: 1.4; margin-bottom: 7pt; }
 
 p { margin: 0 0 7pt 0; text-align: justify; line-height: 1.4; }
-p.titre-section { margin-top: 14pt; margin-bottom: 0; line-height: 1.3; }
-p.titre-section strong { letter-spacing: 0.04em; word-spacing: 0.15em; }
+p.titre-section { margin-top: 14pt; margin-bottom: 2pt; line-height: 1.3; font-size: 13pt; }
+p.titre-section strong { font-size: 13pt; letter-spacing: 0.04em; word-spacing: 0.15em; }
 p.titre-section br { display: block; margin: 0; }
 ul, ol { margin: 2pt 0 7pt 1.1cm; padding: 0; }
 li { margin: 0 0 4pt 0; text-align: justify; line-height: 1.4; }
@@ -58,7 +58,7 @@ for (const [name, file] of [
   );
   let html = r.value;
   html = html.replace(/<a\s+id="[^"]*"><\/a>/g, '');
-  html = html.replace(/135 Avenue de Flandre\s*<\/p><p[^>]*>\s*/gi, '135 Avenue de Flandre ');
+  html = html.replace(/135 Avenue de Flandre\s*<\/p><p>\s*/gi, '135 Avenue de Flandre ');
   html = html.replace(/135 Avenue de Flandre 75019\s*\n\s*/gi, '135 Avenue de Flandre 75019 ');
   // Page de garde
   html = html.replace('<p class="entete2">', '<p class="entete2 cover-top">');
