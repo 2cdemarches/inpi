@@ -108,7 +108,7 @@ export default function InpiPage() {
           <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-sm text-red-600">
             <p className="font-semibold mb-1">Erreur de connexion INPI</p>
             <p>{error}</p>
-            <p className="mt-2 text-red-400">Vérifiez INPI_BEARER dans les variables d'environnement Vercel.</p>
+            <p className="mt-2 text-red-400">Renseignez vos identifiants INPI dans ⚙️ Paramètres.</p>
           </div>
         )}
 

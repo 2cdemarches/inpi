@@ -35,21 +35,35 @@ async function storeTokens(userId, bearer, refresh, expiresInMs = 100 * 60 * 100
 
 // ── Login INPI avec email + mdp ───────────────────────────────────────────────
 async function loginToInpi(email, password) {
-  const res = await fetch(`${GU}/api/sso/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Origin: GU },
-    body: JSON.stringify({ username: email, password }),
-  });
-  if (!res.ok) throw new Error(`Identifiants INPI invalides (${res.status}). Vérifiez le login et mot de passe dans ⚙️ Paramètres.`);
-  const setCookies = getSetCookies(res);
-  const cookies = parseCookies(setCookies);
-  if (!cookies['BEARER']) {
+  // Essayer plusieurs endpoints/formats connus
+  const attempts = [
+    { url: `${GU}/api/login`,     body: { login: email, password } },
+    { url: `${GU}/api/login`,     body: { username: email, password } },
+    { url: `${GU}/api/sso/login`, body: { login: email, password } },
+    { url: `${GU}/api/sso/login`, body: { username: email, password } },
+    { url: `${GU}/login`,         body: { login: email, password } },
+  ];
+
+  for (const { url, body } of attempts) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Origin: GU },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    if (!res || res.status === 404 || res.status === 405) continue;
+
+    if (!res.ok) throw new Error(`Identifiants INPI invalides (${res.status}). Vérifiez le login et mot de passe dans ⚙️ Paramètres.`);
+
+    const setCookies = getSetCookies(res);
+    const cookies = parseCookies(setCookies);
+    if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? null };
+
     const json = await res.json().catch(() => ({}));
-    const token = json.token ?? json.access_token ?? json.bearer;
-    if (!token) throw new Error('Connexion INPI échouée : aucun token reçu.');
-    return { bearer: token, refresh: json.refresh_token ?? null };
+    const token = json.token ?? json.access_token ?? json.bearer ?? json.jwt;
+    if (token) return { bearer: token, refresh: json.refresh_token ?? null };
   }
-  return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? null };
+
+  throw new Error('Connexion INPI échouée : endpoint introuvable. Vérifiez vos identifiants dans ⚙️ Paramètres.');
 }
 
 // ── Refresh du BEARER ─────────────────────────────────────────────────────────
