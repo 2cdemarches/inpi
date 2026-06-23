@@ -549,19 +549,20 @@ export default function Dashboard() {
               {/* INPI */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI (Guichet unique)</h3>
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-                  <strong>Comment obtenir le BEARER :</strong> Connectez-vous sur <a href="https://guichet-unique.inpi.fr" target="_blank" className="underline">guichet-unique.inpi.fr</a>, puis F12 → Application → Cookies → guichet-unique.inpi.fr → copiez la valeur de <strong>BEARER</strong> et <strong>REFRESH_TOKEN</strong>.
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+                  Renseignez vos identifiants guichet-unique.inpi.fr — la connexion se fait automatiquement et le token est renouvelé sans intervention.
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">BEARER token</label>
-                  <textarea value={settings.inpi_bearer || ''} onChange={e => setSettings(s => ({ ...s, inpi_bearer: e.target.value }))}
-                    rows={3} placeholder="eyJ..."
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Email INPI</label>
+                  <input value={settings.inpi_login || ''} onChange={e => setSettings(s => ({ ...s, inpi_login: e.target.value }))}
+                    type="email" placeholder="votre@email.fr"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">REFRESH_TOKEN</label>
-                  <input value={settings.inpi_refresh_token || ''} onChange={e => setSettings(s => ({ ...s, inpi_refresh_token: e.target.value }))}
-                    placeholder="..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe INPI</label>
+                  <input value={settings.inpi_password || ''} onChange={e => setSettings(s => ({ ...s, inpi_password: e.target.value }))}
+                    type="password" placeholder="••••••••"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
               </div>
 
