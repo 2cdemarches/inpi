@@ -36,45 +36,65 @@ async function storeTokens(userId, bearer, refresh, expiresInMs = 100 * 60 * 100
 
 // ── Login INPI avec email + mdp ───────────────────────────────────────────────
 async function loginToInpi(email, password) {
-  // Essayer plusieurs endpoints/formats connus
-  const attempts = [
-    // procedures.inpi.fr — endpoint réel utilisé par le site
-    { url: `${PROC}/security/v1/inpiconnect/login`, origin: PROC, referer: `${PROC}/?/login` },
-    // guichet-unique.inpi.fr — fallback
-    { url: `${GU}/api/login`, origin: GU, referer: `${GU}/` },
-  ];
+  // Étape 1 : login sur procedures.inpi.fr
+  const loginRes = await fetch(`${PROC}/security/v1/inpiconnect/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=UTF-8',
+      Accept: 'application/json, text/*',
+      'User-Agent': UA,
+      Origin: PROC,
+      Referer: `${PROC}/?/login`,
+    },
+    body: JSON.stringify({ email, password }),
+    redirect: 'manual',
+  }).catch(e => { throw new Error(`Connexion INPI impossible : ${e.message}`); });
 
-  let lastError = '';
-  for (const { url, origin, referer } of attempts) {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8',
-        Accept: 'application/json, text/*',
-        'User-Agent': UA,
-        Origin: origin,
-        Referer: referer,
-      },
-      body: JSON.stringify({ email, password }),
-    }).catch(() => null);
-    if (!res || res.status === 404 || res.status === 405) continue;
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      lastError = `${res.status} sur ${url} — ${txt.slice(0, 200)}`;
-      continue;
-    }
-
-    const setCookies = getSetCookies(res);
-    const cookies = parseCookies(setCookies);
-    if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? null };
-
-    const json = await res.json().catch(() => ({}));
-    const token = json.token ?? json.access_token ?? json.bearer ?? json.jwt;
-    if (token) return { bearer: token, refresh: json.refresh_token ?? null };
+  if (!loginRes.ok && loginRes.status !== 302 && loginRes.status !== 301) {
+    const txt = await loginRes.text().catch(() => '');
+    throw new Error(`Identifiants INPI invalides (${loginRes.status}). Vérifiez le login et mot de passe dans ⚙️ Paramètres. Détail : ${txt.slice(0, 150)}`);
   }
 
-  throw new Error(`Connexion INPI échouée : ${lastError || 'endpoint introuvable'}. Vérifiez vos identifiants dans ⚙️ Paramètres.`);
+  // Récupérer le token SSO depuis la réponse JSON
+  const loginJson = await loginRes.json().catch(() => null);
+  const ssoToken = loginJson?.token ?? loginJson?.access_token ?? loginJson?.ssoToken ?? loginJson?.jwt ?? loginJson?.code ?? null;
+  const loginCookiesRaw = parseCookies(getSetCookies(loginRes));
+  const cookieBearer = loginCookiesRaw['BEARER'] ?? loginCookiesRaw['TOKEN'] ?? null;
+
+  // Étape 2 : si token SSO, l'utiliser pour s'authentifier sur guichet-unique
+  if (ssoToken) {
+    // Essayer callback SSO
+    for (const cbUrl of [
+      `${GU}/api/sso/callback?token=${encodeURIComponent(ssoToken)}`,
+      `${GU}/api/sso?token=${encodeURIComponent(ssoToken)}`,
+      `${GU}/?token=${encodeURIComponent(ssoToken)}`,
+    ]) {
+      const cbRes = await fetch(cbUrl, { headers: { 'User-Agent': UA, Referer: PROC }, redirect: 'follow' }).catch(() => null);
+      if (!cbRes) continue;
+      const cbCookies = parseCookies(getSetCookies(cbRes));
+      if (cbCookies['BEARER']) return { bearer: cbCookies['BEARER'], refresh: cbCookies['REFRESH_TOKEN'] ?? null };
+    }
+    // Utiliser le token directement comme BEARER
+    return { bearer: ssoToken, refresh: loginJson?.refresh_token ?? null };
+  }
+
+  // Cookie BEARER direct depuis procedures.inpi.fr
+  if (cookieBearer) return { bearer: cookieBearer, refresh: loginCookiesRaw['REFRESH_TOKEN'] ?? null };
+
+  // Suivre la redirection SSO
+  const location = loginRes.headers.get('location');
+  if (location) {
+    const redirectRes = await fetch(location.startsWith('http') ? location : `${PROC}${location}`, {
+      headers: { 'User-Agent': UA, Referer: PROC },
+      redirect: 'follow',
+    }).catch(() => null);
+    if (redirectRes) {
+      const redirCookies = parseCookies(getSetCookies(redirectRes));
+      if (redirCookies['BEARER']) return { bearer: redirCookies['BEARER'], refresh: redirCookies['REFRESH_TOKEN'] ?? null };
+    }
+  }
+
+  throw new Error('Connexion INPI : authentification réussie mais aucun token récupéré. Réponse : ' + JSON.stringify(loginJson).slice(0, 200));
 }
 
 // ── Refresh du BEARER ─────────────────────────────────────────────────────────
