@@ -38,6 +38,7 @@ p.titre-section br { display: block; margin: 0; }
 ul, ol { margin: 2pt 0 7pt 1.1cm; padding: 0; }
 li { margin: 0 0 4pt 0; text-align: justify; line-height: 1.4; }
 p.list-para { margin-left: 1cm; text-align: justify; }
+div.etat-titre { border: 1px solid #000; text-align: center; font-weight: bold; padding: 6pt 10pt; margin: 14pt 0 10pt 0; background: #f0f0f0; }
 table { width: 100%; border-collapse: collapse; margin: 6pt 0; font-size: 10pt; }
 td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
 th { font-weight: bold; text-align: center; background: #f0f0f0; }
@@ -69,6 +70,11 @@ for (const [name, file] of [
   // Titres de section
   html = html.replace(/<p>(?=<strong>TITRE\s)/g, '<p class="titre-section">');
   html = html.replace(/<p>Le soussigné\s*:/g, '<p class="soussigne">Le soussigné :');
+  const etatRe = /<p[^>]*>ETAT DES SOUSCRIPTIONS ET DES VERSEMENTS<\/p>/i;
+  if (etatRe.test(html)) {
+    html = html.replace(etatRe, '');
+    html = html.replace('<table>', '<div class="etat-titre"><strong>ETAT DES SOUSCRIPTIONS ET DES VERSEMENTS</strong></div><table>');
+  }
   const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${CSS}</style></head><body>${html}</body></html>`;
   fs.writeFileSync(`C:/Users/conta/Desktop/preview2-${name}.html`, full);
   console.log(`✅ preview2-${name}.html`);
