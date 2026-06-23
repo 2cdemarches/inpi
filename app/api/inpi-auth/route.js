@@ -37,6 +37,15 @@ async function storeTokens(userId, bearer, refresh, expiresInMs = 100 * 60 * 100
 // ── Login INPI avec email + mdp ───────────────────────────────────────────────
 async function loginToInpi(email, password) {
   // Essayer plusieurs endpoints et formats de credentials
+  // Étape 1 : charger la page de login pour obtenir les cookies de session
+  const sessionRes = await fetch(`${PROC}/?/login`, {
+    headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'fr-FR,fr;q=0.9' },
+    redirect: 'follow',
+  }).catch(() => null);
+
+  const sessionCookies = sessionRes ? getSetCookies(sessionRes).join('; ') : '';
+
+  // Étape 2 : login avec les cookies de session
   const res = await fetch(`${PROC}/security/v1/inpiconnect/login`, {
     method: 'POST',
     headers: {
@@ -46,6 +55,8 @@ async function loginToInpi(email, password) {
       Origin: PROC,
       Referer: `${PROC}/?/login`,
       'X-Client-Version': '1.27.0-1776089031331',
+      'Accept-Language': 'fr-FR,fr;q=0.9',
+      ...(sessionCookies ? { Cookie: sessionCookies } : {}),
     },
     body: JSON.stringify({ ref: email, password }),
   }).catch(e => { throw new Error(`Connexion INPI impossible : ${e.message}`); });
@@ -60,8 +71,9 @@ async function loginToInpi(email, password) {
   const bearer = json.token ?? json.access_token ?? json.bearer ?? json.jwt;
   if (bearer) return { bearer, refresh: json.refresh_token ?? null };
 
-  const cookies = parseCookies(getSetCookies(res));
-  if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? null };
+  // Le token peut aussi arriver dans les cookies Set-Cookie de la réponse login
+  const allCookies = parseCookies([...getSetCookies(res), ...(sessionCookies ? [sessionCookies] : [])]);
+  if (allCookies['BEARER']) return { bearer: allCookies['BEARER'], refresh: allCookies['REFRESH_TOKEN'] ?? null };
 
   throw new Error('Connexion INPI : token non trouvé dans la réponse : ' + txt.slice(0, 200));
 }
