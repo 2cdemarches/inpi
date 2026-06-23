@@ -91,8 +91,8 @@ export default function InpiPage() {
             {[
               { label: 'Validées',         val: stats.validees,                  color: 'text-green-600', bg: 'bg-green-50 border-green-100', key: 'validees' },
               { label: 'Rejetées',         val: stats.rejetees,                  color: 'text-red-500',   bg: 'bg-red-50 border-red-100',     key: 'rejetees' },
-              { label: 'Régularisation',   val: stats.en_attente_regularisation, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-100', key: 'regularisation' },
               { label: 'En validation',    val: stats.en_attente_validation,     color: 'text-blue-600',  bg: 'bg-blue-50 border-blue-100',   key: 'validation' },
+              { label: 'Régularisation',   val: stats.en_attente_regularisation, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-100', key: 'regularisation' },
             ].map(s => (
               <button key={s.key} onClick={() => setFiltre(filtre === s.key ? 'tous' : s.key)}
                 className={`${s.bg} border rounded-2xl p-4 text-left transition-all hover:shadow-sm ${filtre === s.key ? 'ring-2 ring-offset-1 ring-current' : ''}`}>
