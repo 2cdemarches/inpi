@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getClient, validateClient, findSource, generatePdf } from '@/lib/generate-doc';
+import { addParaphes } from '@/lib/paraphe';
 import { createSupabaseServer, requireUser } from '@/lib/supabase-server';
 
 export const maxDuration = 60;
@@ -26,8 +27,11 @@ export async function GET(request, { params }) {
       const htmlDebug = await generateHtmlDebug(sourcePath, type, clientRow, settings || {});
       return new NextResponse(htmlDebug, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
-    const pdfBuf = await generatePdf(sourcePath, type, clientRow, settings || {});
-    const filename = `${DOC_LABELS[type] || type}_${clientRow.denomination.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+    let pdfBuf = await generatePdf(sourcePath, type, clientRow, settings || {});
+    const withParaphe = new URL(request.url).searchParams.get('paraphe') === '1';
+    if (withParaphe) pdfBuf = await addParaphes(pdfBuf, clientRow);
+    const suffix   = withParaphe ? '_paraphe' : '';
+    const filename = `${DOC_LABELS[type] || type}_${clientRow.denomination.replace(/[^a-zA-Z0-9]/g, '_')}${suffix}.pdf`;
 
     return new NextResponse(pdfBuf, {
       status: 200,

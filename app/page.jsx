@@ -412,20 +412,26 @@ export default function Dashboard() {
 
               {/* Documents */}
               <Section title="Documents PDF">
-                <div className="grid grid-cols-2 gap-2 mb-2">
+                <div className="space-y-1.5 mb-2">
                   {[
                     { type: 'statuts',       label: 'Statuts' },
                     { type: 'pouvoir',       label: 'Pouvoir' },
                     { type: 'souscripteurs', label: 'Liste souscripteurs' },
                     { type: 'dnc',           label: 'DNC' },
                   ].map(({ type, label }) => (
-                    <a key={type} href={`/api/documents/${selected.id}/${type}`} target="_blank"
-                      className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 rounded-xl hover:bg-red-50 hover:border-red-200 text-sm text-slate-700 hover:text-red-700 transition-colors">
-                      <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
-                      {label}
-                    </a>
+                    <div key={type} className="flex gap-1.5">
+                      <a href={`/api/documents/${selected.id}/${type}`} target="_blank"
+                        className="flex-1 flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-xl hover:bg-red-50 hover:border-red-200 text-sm text-slate-700 hover:text-red-700 transition-colors">
+                        <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        {label}
+                      </a>
+                      <a href={`/api/documents/${selected.id}/${type}?paraphe=1`} target="_blank" title="Télécharger avec paraphes"
+                        className="flex items-center gap-1 px-2.5 py-2 border border-violet-200 rounded-xl hover:bg-violet-50 text-xs text-violet-600 hover:text-violet-800 transition-colors font-medium whitespace-nowrap">
+                        ✍ Paraphé
+                      </a>
+                    </div>
                   ))}
                 </div>
                 <a href={`/api/documents/${selected.id}/zip`}
