@@ -16,7 +16,10 @@ const STATUTS_MANUELS = [
 
 const TYPES_SOCIETE = ['SASU', 'SAS', 'EURL', 'SARL', 'SCI', 'Micro-entreprise'];
 
-const DEFAULT_OBJET_SOCIAL = `Régie commerciale, développement commercial, apporteurs d'affaires, call-center,\nprise de rendez-vous, commissions sur ventes, intermédiations, en France et à\nl'international.\nVentes et achats en France et à l'international\nLa participation de la Société, par tous moyens, à toutes entreprises ou sociétés\ncréées ou à créer, pouvant se rattacher à l'objet social, notamment par voie de\ncréation de sociétés nouvelles, d'apport, commandite, souscription ou rachat de titres\nou droits sociaux, fusion, alliance ou association en participation ou groupement\nd'intérêt économique ou de location gérance de tous fonds de commerce.\nEt plus généralement, toutes opérations industrielles, commerciales et financières,\nmobilières et immobilières pouvant se rattacher directement ou indirectement à\nl'objet social et à tous objets similaires ou connexes pouvant favoriser son extension\nou son développement.`;
+const DEFAULT_OBJET_SOCIAL = `Régie commerciale, développement commercial, apporteurs d'affaires, call-center, prise de rendez-vous, commissions sur ventes, intermédiations, en France et à l'international.
+Ventes et achats en France et à l'international
+La participation de la Société, par tous moyens, à toutes entreprises ou sociétés créées ou à créer, pouvant se rattacher à l'objet social, notamment par voie de création de sociétés nouvelles, d'apport, commandite, souscription ou rachat de titres ou droits sociaux, fusion, alliance ou association en participation ou groupement d'intérêt économique ou de location gérance de tous fonds de commerce.
+Et plus généralement, toutes opérations industrielles, commerciales et financières, mobilières et immobilières pouvant se rattacher directement ou indirectement à l'objet social et à tous objets similaires ou connexes pouvant favoriser son extension ou son développement.`;
 
 function newForm() {
   return {
