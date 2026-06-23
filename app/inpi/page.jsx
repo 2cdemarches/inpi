@@ -45,15 +45,18 @@ export default function InpiPage() {
   const formalites = data?.formalites || [];
   const stats      = data?.stats || {};
 
+  const STATUTS = {
+    validees:       ['VALIDATED','VALIDATED_BO_AMENDMENT_SIGNED','VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING'],
+    rejetees:       ['REJECTED','ERROR_VALIDATION','ERROR_DECLARATION_INSEE','ERROR_INSEE_EXISTS_PM'],
+    regularisation: ['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED','AMENDMENT_PAYMENT_PENDING','AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID','AMENDED'],
+    validation:     ['VALIDATION_PENDING','RECEIVED'],
+  };
+
   const filtered = formalites.filter(f => {
     const matchSearch = !search ||
       f.denomination?.toLowerCase().includes(search.toLowerCase()) ||
       f.siren?.includes(search);
-    const matchFiltre = filtre === 'tous' ||
-      (filtre === 'validees'   && f.statut_color === 'green') ||
-      (filtre === 'rejetees'   && f.statut_color === 'red') ||
-      (filtre === 'regularisation' && f.statut_color === 'amber') ||
-      (filtre === 'validation' && f.statut_color === 'blue');
+    const matchFiltre = filtre === 'tous' || (STATUTS[filtre] || []).includes(f.statut);
     return matchSearch && matchFiltre;
   });
 
