@@ -69,7 +69,10 @@ function Spin() {
 
 // ── Composant statut DocuSign par client ─────────────────────────────────────
 function DsStatus({ envelopeId }) {
-  const [status, setStatus] = useState(null);
+  const cacheKey = `ds_status_${envelopeId}`;
+  const [status, setStatus] = useState(() => {
+    try { const c = localStorage.getItem(cacheKey); return c ? JSON.parse(c) : null; } catch { return null; }
+  });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -77,20 +80,28 @@ function DsStatus({ envelopeId }) {
     setLoading(true);
     fetch(`/api/docusign/envelope?id=${envelopeId}`)
       .then(r => r.json())
-      .then(d => { if (d.status) setStatus(d.status); })
+      .then(d => {
+        if (d.status) {
+          setStatus(d.status);
+          try { localStorage.setItem(cacheKey, JSON.stringify(d.status)); } catch {}
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [envelopeId]);
 
-  if (!envelopeId) return <Badge label="Pas d'enveloppe" color="slate" />;
-  if (loading) return <span className="flex items-center gap-1.5 text-xs text-slate-400"><Spin /> DocuSign…</span>;
-  if (!status) return <Badge label="Introuvable" color="slate" />;
+  if (!envelopeId) return <Badge label="—" color="slate" />;
+  if (loading && !status) return <span className="flex items-center gap-1 text-xs text-slate-300 w-20"><Spin /> DS…</span>;
+  if (!status) return <Badge label="—" color="slate" />;
   return <Badge label={DS_LABELS[status] || status} color={DS_COLORS[status] || 'slate'} dot />;
 }
 
 // ── Composant statut INPI par client ─────────────────────────────────────────
-function InpiStatus({ clientId, denomination }) {
-  const [status, setStatus] = useState(null);
+function InpiStatus({ denomination }) {
+  const cacheKey = `inpi_status_${denomination}`;
+  const [status, setStatus] = useState(() => {
+    try { const c = localStorage.getItem(cacheKey); return c ? JSON.parse(c) : null; } catch { return null; }
+  });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -102,21 +113,26 @@ function InpiStatus({ clientId, denomination }) {
         const match = (d.formalites || []).find(f =>
           f.denomination?.toLowerCase() === denomination.toLowerCase()
         );
-        if (match) setStatus(match);
+        if (match) {
+          setStatus(match);
+          try { localStorage.setItem(cacheKey, JSON.stringify(match)); } catch {}
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [denomination]);
 
   if (!denomination) return <Badge label="—" color="slate" />;
-  if (loading) return <span className="flex items-center gap-1.5 text-xs text-slate-400"><Spin /> INPI…</span>;
-  if (!status) return <Badge label="Non trouvé INPI" color="slate" />;
+  if (loading && !status) return <span className="flex items-center gap-1 text-xs text-slate-300 w-20"><Spin /> INPI…</span>;
+  if (!status) return <Badge label="—" color="slate" />;
   return <Badge label={status.statut_label} color={status.statut_color} dot />;
 }
 
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [clients, setClients]       = useState([]);
+  const [clients, setClients]       = useState(() => {
+    try { const c = localStorage.getItem('clients_cache'); return c ? JSON.parse(c) : []; } catch { return []; }
+  });
   const [loading, setLoading]       = useState(true);
   const [search, setSearch]         = useState('');
   const [filterType, setFilterType] = useState('tous');
@@ -134,7 +150,10 @@ export default function Dashboard() {
     setLoading(true);
     const res = await fetch('/api/clients');
     const json = await res.json();
-    if (json.ok) setClients(json.clients);
+    if (json.ok) {
+      setClients(json.clients);
+      try { localStorage.setItem('clients_cache', JSON.stringify(json.clients)); } catch {}
+    }
     setLoading(false);
   }, []);
 
@@ -298,15 +317,15 @@ export default function Dashboard() {
                     <p className="text-xs text-slate-400 truncate">{client.civilite} {client.prenom} {client.nom}</p>
                   </div>
 
-                  {/* Statuts à droite */}
-                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                    <Badge label={client.type_societe} color="purple" />
-                    <div className="flex gap-1.5 flex-wrap justify-end">
-                      <DsStatus envelopeId={client.docusign_envelope_id} />
-                      <InpiStatus denomination={client.denomination} />
-                      {(client.statuts_manuels || []).length > 0 && (
-                        <Badge label={client.statuts_manuels.at(-1).label} color="orange" dot />
-                      )}
+                  {/* Grille statuts — 4 colonnes fixes alignées */}
+                  <div className="flex-shrink-0 grid grid-cols-4 gap-x-2 gap-y-0 items-center" style={{gridTemplateColumns:'repeat(4,minmax(5.5rem,auto))'}}>
+                    <div className="flex justify-center"><Badge label={client.type_societe} color="purple" /></div>
+                    <div className="flex justify-center"><DsStatus envelopeId={client.docusign_envelope_id} /></div>
+                    <div className="flex justify-center"><InpiStatus denomination={client.denomination} /></div>
+                    <div className="flex justify-center">
+                      {(client.statuts_manuels || []).length > 0
+                        ? <Badge label={client.statuts_manuels.at(-1).label} color="orange" dot />
+                        : <Badge label="—" color="slate" />}
                     </div>
                   </div>
                 </div>
