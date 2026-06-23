@@ -127,7 +127,7 @@ export default function Dashboard() {
   const [selected, setSelected]     = useState(null);
   const [newStatut, setNewStatut]   = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '' });
+  const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '', docusign_integration_key: '', docusign_user_id: '', docusign_account_id: '', docusign_private_key: '', docusign_env: 'production', inpi_login: '', inpi_password: '' });
   const [savingSettings, setSavingSettings] = useState(false);
 
   const loadClients = useCallback(async () => {
@@ -240,6 +240,7 @@ export default function Dashboard() {
             <a href="/signature" className="px-3 py-2 text-sm text-blue-600 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 font-medium">✍️ Signatures</a>
             <a href="/inpi"      className="px-3 py-2 text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-xl hover:bg-orange-100 font-medium">🏛️ INPI</a>
             <button onClick={() => setShowSettings(true)} className="px-3 py-2 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 font-medium">⚙️ Paramètres</button>
+            <button onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; }} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl font-medium">Déconnexion</button>
             <button onClick={openNew}
               className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -446,23 +447,77 @@ export default function Dashboard() {
               <h2 className="font-bold text-slate-800">Paramètres du cabinet</h2>
               <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
             </div>
-            <div className="px-6 py-5 space-y-4">
-              <p className="text-xs text-slate-500">Ces informations apparaissent dans la procuration (pouvoir).</p>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Nom du cabinet mandataire</label>
-                <input value={settings.nom_cabinet} onChange={e => setSettings(s => ({ ...s, nom_cabinet: e.target.value }))}
-                  placeholder="ex : MC CONSEIL" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <div className="px-6 py-5 space-y-6 max-h-[70vh] overflow-y-auto">
+
+              {/* Cabinet */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cabinet (pouvoir)</h3>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Nom du cabinet mandataire</label>
+                  <input value={settings.nom_cabinet || ''} onChange={e => setSettings(s => ({ ...s, nom_cabinet: e.target.value }))}
+                    placeholder="ex : MC CONSEIL" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Représentant du cabinet</label>
+                  <input value={settings.representant_cabinet || ''} onChange={e => setSettings(s => ({ ...s, representant_cabinet: e.target.value }))}
+                    placeholder="ex : Monsieur CELNIK" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Adresse du cabinet</label>
+                  <input value={settings.adresse_cabinet || ''} onChange={e => setSettings(s => ({ ...s, adresse_cabinet: e.target.value }))}
+                    placeholder="ex : 35 Boulevard de la Muette 95140 Garges Les Gonesse" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Représentant du cabinet</label>
-                <input value={settings.representant_cabinet} onChange={e => setSettings(s => ({ ...s, representant_cabinet: e.target.value }))}
-                  placeholder="ex : Monsieur CELNIK" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+
+              {/* DocuSign */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">DocuSign</h3>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Integration Key (Client ID)</label>
+                  <input value={settings.docusign_integration_key || ''} onChange={e => setSettings(s => ({ ...s, docusign_integration_key: e.target.value }))}
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">User ID (API Username)</label>
+                  <input value={settings.docusign_user_id || ''} onChange={e => setSettings(s => ({ ...s, docusign_user_id: e.target.value }))}
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Account ID</label>
+                  <input value={settings.docusign_account_id || ''} onChange={e => setSettings(s => ({ ...s, docusign_account_id: e.target.value }))}
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Clé privée RSA</label>
+                  <textarea value={settings.docusign_private_key || ''} onChange={e => setSettings(s => ({ ...s, docusign_private_key: e.target.value }))}
+                    rows={4} placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Environnement</label>
+                  <select value={settings.docusign_env || 'production'} onChange={e => setSettings(s => ({ ...s, docusign_env: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    <option value="production">Production</option>
+                    <option value="demo">Démo / Sandbox</option>
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Adresse du cabinet</label>
-                <input value={settings.adresse_cabinet} onChange={e => setSettings(s => ({ ...s, adresse_cabinet: e.target.value }))}
-                  placeholder="ex : 35 Boulevard de la Muette 95140 Garges Les Gonesse" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+
+              {/* INPI */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI (Guichet)</h3>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Identifiant</label>
+                  <input value={settings.inpi_login || ''} onChange={e => setSettings(s => ({ ...s, inpi_login: e.target.value }))}
+                    placeholder="votre@email.fr" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe</label>
+                  <input type="password" value={settings.inpi_password || ''} onChange={e => setSettings(s => ({ ...s, inpi_password: e.target.value }))}
+                    placeholder="••••••••" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
               </div>
+
             </div>
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
               <button onClick={() => setShowSettings(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Annuler</button>

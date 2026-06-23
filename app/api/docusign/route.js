@@ -69,12 +69,17 @@ const STATUT_FR = {
 
 export async function GET(request) {
   try {
+    const { createSupabaseServer, requireUser } = await import('@/lib/supabase-server');
+    const user = await requireUser();
+    const sb = await createSupabaseServer();
+    const { data: s } = await sb.from('settings').select('*').eq('user_id', user.id).single();
+
     const cfg = {
-      DOCUSIGN_INTEGRATION_KEY: process.env.DOCUSIGN_INTEGRATION_KEY,
-      DOCUSIGN_USER_ID:         process.env.DOCUSIGN_USER_ID,
-      DOCUSIGN_ACCOUNT_ID:      process.env.DOCUSIGN_ACCOUNT_ID,
-      DOCUSIGN_PRIVATE_KEY:     process.env.DOCUSIGN_PRIVATE_KEY,
-      DOCUSIGN_ENV:             process.env.DOCUSIGN_ENV || 'production',
+      DOCUSIGN_INTEGRATION_KEY: s?.docusign_integration_key || process.env.DOCUSIGN_INTEGRATION_KEY,
+      DOCUSIGN_USER_ID:         s?.docusign_user_id         || process.env.DOCUSIGN_USER_ID,
+      DOCUSIGN_ACCOUNT_ID:      s?.docusign_account_id      || process.env.DOCUSIGN_ACCOUNT_ID,
+      DOCUSIGN_PRIVATE_KEY:     s?.docusign_private_key     || process.env.DOCUSIGN_PRIVATE_KEY,
+      DOCUSIGN_ENV:             s?.docusign_env             || process.env.DOCUSIGN_ENV || 'production',
     };
 
     const token = await getToken(cfg);

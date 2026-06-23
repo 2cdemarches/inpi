@@ -1,13 +1,7 @@
 import { NextResponse } from 'next/server';
 import JSZip from 'jszip';
-import { getClient, validateClient, findSource, generatePdf } from '@/lib/generate-doc';
-import { createClient } from '@supabase/supabase-js';
-
-async function getSettings() {
-  const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-  const { data } = await sb.from('settings').select('*').eq('id', 1).single();
-  return data || {};
-}
+import { validateClient, findSource, generatePdf } from '@/lib/generate-doc';
+import { createSupabaseServer, requireUser } from '@/lib/supabase-server';
 
 export const maxDuration = 60;
 
@@ -20,24 +14,25 @@ const DOCS = [
 
 export async function GET(request, { params }) {
   const { id } = await params;
-
   try {
-    const client = await getClient(id);
+    const user = await requireUser();
+    const sb = await createSupabaseServer();
 
-    // Vérifier les champs communs (dnc nécessite nom_pere/nom_mere en plus)
+    const { data: client } = await sb.from('clients').select('*').eq('id', id).eq('user_id', user.id).single();
+    if (!client) return NextResponse.json({ error: 'Client introuvable' }, { status: 404 });
+
     validateClient(client, 'dnc');
+    const { data: settings } = await sb.from('settings').select('*').eq('user_id', user.id).single();
 
     const nom    = client.denomination.replace(/[^a-zA-Z0-9]/g, '_');
     const zip    = new JSZip();
     const errors = [];
 
-    const settings = await getSettings();
-
     await Promise.all(DOCS.map(async ({ type, label }) => {
       const sourcePath = findSource(client.type_societe, type);
       if (!sourcePath) { errors.push(`${label} : modèle manquant pour ${client.type_societe}`); return; }
       try {
-        const pdfBuf = await generatePdf(sourcePath, type, client, settings);
+        const pdfBuf = await generatePdf(sourcePath, type, client, settings || {});
         zip.file(`${label}_${nom}.pdf`, pdfBuf);
       } catch (e) {
         errors.push(`${label} : ${e.message}`);
@@ -47,13 +42,9 @@ export async function GET(request, { params }) {
     if (errors.length && Object.keys(zip.files).length === 0) {
       return NextResponse.json({ error: errors.join('\n') }, { status: 500 });
     }
-
-    if (errors.length) {
-      zip.file('_erreurs.txt', errors.join('\n'));
-    }
+    if (errors.length) zip.file('_erreurs.txt', errors.join('\n'));
 
     const zipBuf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-
     return new NextResponse(zipBuf, {
       status: 200,
       headers: {
@@ -62,6 +53,6 @@ export async function GET(request, { params }) {
       },
     });
   } catch (e) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: e.message }, { status: e.message === 'Non authentifié' ? 401 : 500 });
   }
 }

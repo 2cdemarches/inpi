@@ -1,12 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getClient, validateClient, findSource, generatePdf } from '@/lib/generate-doc';
-import { createClient } from '@supabase/supabase-js';
-
-async function getSettings() {
-  const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-  const { data } = await sb.from('settings').select('*').eq('id', 1).single();
-  return data || {};
-}
+import { createSupabaseServer, requireUser } from '@/lib/supabase-server';
 
 export const maxDuration = 60;
 
@@ -14,24 +8,20 @@ const DOC_LABELS = { statuts: 'Statuts', pouvoir: 'Pouvoir', souscripteurs: 'Lis
 
 export async function GET(request, { params }) {
   const { id, type } = await params;
-
   try {
-    const client = await getClient(id);
+    const user = await requireUser();
+    const sb = await createSupabaseServer();
 
-    // Vérifier que tous les champs requis sont remplis
-    validateClient(client, type);
+    const { data: clientRow } = await sb.from('clients').select('*').eq('id', id).eq('user_id', user.id).single();
+    if (!clientRow) return NextResponse.json({ error: 'Client introuvable' }, { status: 404 });
 
-    const sourcePath = findSource(client.type_societe, type);
-    if (!sourcePath) {
-      return NextResponse.json(
-        { error: `Pas encore de modèle "${type}" pour ${client.type_societe}. Envoyez les modèles pour ce type de société.` },
-        { status: 404 }
-      );
-    }
+    validateClient(clientRow, type);
+    const sourcePath = findSource(clientRow.type_societe, type);
+    if (!sourcePath) return NextResponse.json({ error: `Pas encore de modèle "${type}" pour ${clientRow.type_societe}.` }, { status: 404 });
 
-    const settings = await getSettings();
-    const pdfBuf = await generatePdf(sourcePath, type, client, settings);
-    const filename = `${DOC_LABELS[type] || type}_${client.denomination.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+    const { data: settings } = await sb.from('settings').select('*').eq('user_id', user.id).single();
+    const pdfBuf = await generatePdf(sourcePath, type, clientRow, settings || {});
+    const filename = `${DOC_LABELS[type] || type}_${clientRow.denomination.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
 
     return new NextResponse(pdfBuf, {
       status: 200,
@@ -41,6 +31,6 @@ export async function GET(request, { params }) {
       },
     });
   } catch (e) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: e.message }, { status: e.message === 'Non authentifié' ? 401 : 500 });
   }
 }

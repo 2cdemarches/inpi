@@ -1,21 +1,30 @@
-import { createClient } from '@supabase/supabase-js';
-
-function sb() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
-}
+import { createSupabaseServer, requireUser } from '@/lib/supabase-server';
+import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const { data, error } = await sb().from('settings').select('*').eq('id', 1).single();
-  if (error) return Response.json({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '' });
-  return Response.json(data);
+  try {
+    const user = await requireUser();
+    const sb = await createSupabaseServer();
+    const { data } = await sb.from('settings').select('*').eq('user_id', user.id).single();
+    return NextResponse.json(data || {});
+  } catch {
+    return NextResponse.json({}, { status: 401 });
+  }
 }
 
 export async function PATCH(req) {
-  const body = await req.json();
-  const { error } = await sb().from('settings').upsert({ id: 1, ...body, updated_at: new Date().toISOString() });
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ ok: true });
+  try {
+    const user = await requireUser();
+    const body = await req.json();
+    const sb = await createSupabaseServer();
+    const { error } = await sb.from('settings').upsert({
+      user_id: user.id,
+      ...body,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  }
 }
