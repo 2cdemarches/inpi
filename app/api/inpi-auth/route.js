@@ -37,14 +37,11 @@ async function storeTokens(userId, bearer, refresh, expiresInMs = 100 * 60 * 100
 async function loginToInpi(email, password) {
   // Essayer plusieurs endpoints/formats connus
   const attempts = [
-    { url: `${GU}/api/login`,     body: { login: email, password } },
-    { url: `${GU}/api/login`,     body: { email, password } },
-    { url: `${GU}/api/login`,     body: { username: email, password } },
-    { url: `${GU}/api/sso/login`, body: { login: email, password } },
-    { url: `${GU}/api/sso/login`, body: { email, password } },
-    { url: `${GU}/api/sso/login`, body: { username: email, password } },
-    { url: `${GU}/login`,         body: { login: email, password } },
-    { url: `${GU}/login`,         body: { email, password } },
+    { url: `${GU}/api/login`, body: { email, password } },
+    { url: `${GU}/api/login`, body: { email, motDePasse: password } },
+    { url: `${GU}/api/login`, body: { email, mot_de_passe: password } },
+    { url: `${GU}/api/login`, body: { email, mdp: password } },
+    { url: `${GU}/api/login`, body: { email, pass: password } },
   ];
 
   let lastError = '';
