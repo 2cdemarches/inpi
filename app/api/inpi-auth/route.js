@@ -37,49 +37,44 @@ async function storeTokens(userId, bearer, refresh, expiresInMs = 100 * 60 * 100
 // ── Login INPI avec email + mdp ───────────────────────────────────────────────
 async function loginToInpi(email, password) {
   // Essayer plusieurs endpoints et formats de credentials
-  const attempts = [
-    // guichet-unique direct
-    { url: `${GU}/api/sso/login`,                       body: { login: email, password }, origin: GU,   referer: `${GU}/` },
-    { url: `${GU}/api/login`,                            body: { login: email, password }, origin: GU,   referer: `${GU}/` },
-    { url: `${GU}/api/login`,                            body: { email, password },        origin: GU,   referer: `${GU}/` },
-    // procedures.inpi.fr
-    { url: `${PROC}/security/v1/inpiconnect/login`,      body: { login: email, password }, origin: PROC, referer: `${PROC}/?/login` },
-    { url: `${PROC}/security/v1/inpiconnect/login`,      body: { email, password },        origin: PROC, referer: `${PROC}/?/login` },
+  const jsonAttempts = [
+    { url: `${GU}/api/sso/login`,                  body: { username: email, password } },
+    { url: `${GU}/api/sso/login`,                  body: { email, password } },
+    { url: `${GU}/api/sso/login`,                  body: { login: email, password } },
+    { url: `${GU}/api/login`,                       body: { username: email, password } },
+    { url: `${GU}/api/login`,                       body: { email, password } },
+    { url: `${GU}/api/accounts/login`,              body: { username: email, password } },
+    { url: `${GU}/api/accounts/login`,              body: { email, password } },
+    { url: `${PROC}/security/v1/inpiconnect/login`, body: { ref: email, password } },
+    { url: `${PROC}/security/v1/inpiconnect/login`, body: { login: email, password } },
+    { url: `${PROC}/security/v1/inpiconnect/login`, body: { email, password } },
   ];
 
   let lastErr = '';
-  for (const { url, body, origin, referer } of attempts) {
+  for (const { url, body } of jsonAttempts) {
+    const origin  = url.startsWith(GU) ? GU : PROC;
+    const referer = url.startsWith(GU) ? `${GU}/` : `${PROC}/?/login`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8',
-        Accept: 'application/json, text/*',
-        'User-Agent': UA,
-        Origin: origin,
-        Referer: referer,
-        'X-Client-Version': '1.27.0-1776089031331',
-      },
+      headers: { 'Content-Type': 'application/json; charset=UTF-8', Accept: 'application/json, text/*', 'User-Agent': UA, Origin: origin, Referer: referer },
       body: JSON.stringify(body),
     }).catch(() => null);
 
     if (!res) continue;
+    const txt = await res.text().catch(() => '');
 
-    if (res.ok || res.status === 200) {
-      const json = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const json = JSON.parse(txt || '{}');
       const bearer = json.token ?? json.access_token ?? json.bearer ?? json.jwt;
       if (bearer) return { bearer, refresh: json.refresh_token ?? null };
       const cookies = parseCookies(getSetCookies(res));
       if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? null };
     }
 
-    const txt = await res.text().catch(() => '');
-    lastErr = `${res.status} ${txt.slice(0, 150)}`;
-
-    // 401 = mauvais mdp (inutile d'essayer d'autres formats)
-    if (res.status === 401) break;
+    lastErr = `[${url.replace(/https?:\/\/[^/]+/, '')}] ${res.status} ${txt.slice(0, 100)}`;
   }
 
-  throw new Error(`Identifiants INPI invalides. Vérifiez email et mot de passe dans ⚙️ Paramètres. Détail : ${lastErr}`);
+  throw new Error(`Connexion INPI impossible. Détail du dernier essai : ${lastErr}`);
 }
 
 // ── Refresh du BEARER ─────────────────────────────────────────────────────────
