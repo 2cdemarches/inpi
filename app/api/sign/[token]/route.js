@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { sendMail } from '@/lib/mailer';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://inpi-ten.vercel.app';
 
@@ -127,20 +128,28 @@ export async function POST(req, { params }) {
   }).eq('id', request.id);
 
   // Notifier le cabinet par email
-  const RESEND_KEY = process.env.RESEND_API_KEY;
-  if (RESEND_KEY) {
-    const { data: settings } = await sb.from('settings').select('nom_cabinet').eq('user_id', request.user_id).single();
-    await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_KEY}` },
-      body: JSON.stringify({
-        from: `Signature <signature@2c-expertise.fr>`,
-        to:   [process.env.CABINET_EMAIL || 'l.levy@2c-expertise.fr'],
-        subject: `✅ Documents signés — ${signerName}`,
-        html: `<p><strong>${signerName}</strong> vient de signer les documents.</p><p>IP : ${signerIp}</p><p>Date : ${new Date(signedAt).toLocaleString('fr-FR')}</p><p><a href="${APP_URL}">Voir dans l'outil</a></p>`,
-      }),
+  try {
+    const { data: settings } = await sb.from('settings').select('*').eq('user_id', request.user_id).single();
+    const cabinetEmail = settings?.email_cabinet || process.env.CABINET_EMAIL || 'l.levy@2c-expertise.fr';
+    await sendMail(settings, {
+      to:      cabinetEmail,
+      subject: `✅ Documents signés — ${signerName}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:500px;color:#1e293b">
+          <h2 style="color:#16a34a">✅ Documents signés</h2>
+          <p><strong>${signerName}</strong> vient de signer les documents.</p>
+          <table style="border-collapse:collapse;margin:16px 0">
+            <tr><td style="padding:4px 12px 4px 0;color:#64748b">Date</td><td><strong>${new Date(signedAt).toLocaleString('fr-FR')}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0;color:#64748b">IP</td><td>${signerIp}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;color:#64748b">Documents</td><td>${signedDocs.map(d => d.label).join(', ')}</td></tr>
+          </table>
+          <a href="${APP_URL}" style="display:inline-block;background:#1e40af;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">
+            Voir dans l'outil →
+          </a>
+        </div>
+      `,
     });
-  }
+  } catch (_) {} // notification non bloquante
 
   return NextResponse.json({ ok: true, signedAt, docs: signedDocs });
 }

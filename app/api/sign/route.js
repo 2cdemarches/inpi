@@ -3,6 +3,7 @@ import { createSupabaseServer, requireUser } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
 import { generatePdf, findSource } from '@/lib/generate-doc';
 import { addParaphes } from '@/lib/paraphe';
+import { sendMail } from '@/lib/mailer';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://inpi-ten.vercel.app';
 
@@ -17,39 +18,31 @@ const DOC_LABELS = {
   dnc:           'Déclaration de non-condamnation',
 };
 
-async function sendEmail({ to, toName, clientName, signUrl, docs, cabinetName }) {
-  const RESEND_KEY = process.env.RESEND_API_KEY;
-  if (!RESEND_KEY) return; // email désactivé si pas de clé
-
+async function sendSignatureEmail({ settings, to, toName, clientName, signUrl, docs }) {
+  const cabinetName = settings?.nom_cabinet || '2C Expertise';
   const docList = docs.map(d => `<li>${DOC_LABELS[d] || d}</li>`).join('');
-
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_KEY}` },
-    body: JSON.stringify({
-      from:    `${cabinetName || '2C Expertise'} <signature@2c-expertise.fr>`,
-      to:      [to],
-      subject: `Documents à signer — ${clientName}`,
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1e293b">
-          <div style="background:#1e40af;padding:24px 32px;border-radius:12px 12px 0 0">
-            <h1 style="color:white;margin:0;font-size:20px">Documents à signer</h1>
-          </div>
-          <div style="background:#f8fafc;padding:32px;border-radius:0 0 12px 12px;border:1px solid #e2e8f0">
-            <p>Bonjour ${toName || ''},</p>
-            <p style="margin-top:16px">Vous trouverez ci-dessous les documents relatifs à la constitution de <strong>${clientName}</strong> à signer électroniquement.</p>
-            <p style="margin-top:16px"><strong>Documents à signer :</strong></p>
-            <ul style="margin:8px 0 24px 0;padding-left:20px">${docList}</ul>
-            <a href="${signUrl}" style="display:inline-block;background:#1e40af;color:white;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">
-              ✍️ Signer les documents
-            </a>
-            <p style="margin-top:24px;font-size:13px;color:#64748b">Ce lien est valable 30 jours. Si vous avez des questions, contactez votre cabinet.</p>
-            <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
-            <p style="font-size:12px;color:#94a3b8">${cabinetName || '2C Expertise'} — Signature électronique sécurisée</p>
-          </div>
+  await sendMail(settings, {
+    to,
+    subject: `Documents à signer — ${clientName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1e293b">
+        <div style="background:#1e40af;padding:24px 32px;border-radius:12px 12px 0 0">
+          <h1 style="color:white;margin:0;font-size:20px">Documents à signer</h1>
         </div>
-      `,
-    }),
+        <div style="background:#f8fafc;padding:32px;border-radius:0 0 12px 12px;border:1px solid #e2e8f0">
+          <p>Bonjour ${toName || ''},</p>
+          <p style="margin-top:16px">Vous trouverez ci-dessous les documents relatifs à la constitution de <strong>${clientName}</strong> à signer électroniquement.</p>
+          <p style="margin-top:16px"><strong>Documents à signer :</strong></p>
+          <ul style="margin:8px 0 24px 0;padding-left:20px">${docList}</ul>
+          <a href="${signUrl}" style="display:inline-block;background:#1e40af;color:white;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">
+            ✍️ Signer les documents
+          </a>
+          <p style="margin-top:24px;font-size:13px;color:#64748b">Ce lien est valable 30 jours. Si vous avez des questions, contactez votre cabinet.</p>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
+          <p style="font-size:12px;color:#94a3b8">${cabinetName} — Signature électronique sécurisée</p>
+        </div>
+      </div>
+    `,
   });
 }
 
@@ -59,10 +52,10 @@ export async function POST(req) {
     const user = await requireUser();
     const sb   = await createSupabaseServer();
     const body = await req.json();
-    const { clientId, documents, email, emailName } = body;
+    const { clientId, documents, email: emailOverride, emailName } = body;
 
-    if (!clientId || !documents?.length || !email) {
-      return NextResponse.json({ error: 'clientId, documents et email requis' }, { status: 400 });
+    if (!clientId || !documents?.length) {
+      return NextResponse.json({ error: 'clientId et documents requis' }, { status: 400 });
     }
 
     const { data: client } = await sb.from('clients').select('*').eq('id', clientId).eq('user_id', user.id).single();
@@ -112,15 +105,18 @@ export async function POST(req) {
       await admin.storage.from('signatures').upload(`${req2.id}/${docType}.pdf`, pdfBuf, { contentType: 'application/pdf', upsert: true });
     }
 
-    // Envoyer l'email
+    // Envoyer l'email (email fourni manuellement ou email du client en DB)
+    const to = emailOverride || client.email;
     const signUrl = `${APP_URL}/sign/${token}`;
-    await sendEmail({
-      to: email, toName: emailName,
-      clientName:  client.denomination,
-      signUrl,
-      docs: documents,
-      cabinetName: settings?.nom_cabinet,
-    });
+    if (to) {
+      await sendSignatureEmail({
+        settings, to,
+        toName:      emailName || `${client.prenom} ${client.nom}`,
+        clientName:  client.denomination,
+        signUrl,
+        docs: documents,
+      });
+    }
 
     return NextResponse.json({ ok: true, token, signUrl, requestId: req2.id });
   } catch (e) {

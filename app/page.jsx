@@ -31,6 +31,7 @@ function newForm() {
     siege_social: '', ville_siege: '', objet_social: DEFAULT_OBJET_SOCIAL,
     adresse: '', adresse_cp: '', adresse_ville: '',
     nb_actions: 100, date_signature: '', ville_signature: '',
+    email: '', telephone: '',
     docusign_envelope_id: '', notes: '',
   };
 }
@@ -155,7 +156,7 @@ export default function Dashboard() {
   const [showSaveModele, setShowSaveModele] = useState(false);
   const [nomModele, setNomModele]   = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '', docusign_integration_key: '', docusign_user_id: '', docusign_account_id: '', docusign_private_key: '', docusign_env: 'production', inpi_login: '', inpi_password: '' });
+  const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '', email_cabinet: '', smtp_host: '', smtp_port: 587, smtp_user: '', smtp_pass: '', smtp_from: '', docusign_integration_key: '', docusign_user_id: '', docusign_account_id: '', docusign_private_key: '', docusign_env: 'production', inpi_login: '', inpi_password: '' });
   const [savingSettings, setSavingSettings] = useState(false);
 
   const loadClients = useCallback(async () => {
@@ -407,6 +408,8 @@ export default function Dashboard() {
                 <Row label="Adresse" value={selected.adresse} />
                 {selected.nom_pere && <Row label="Père" value={selected.nom_pere} />}
                 {selected.nom_mere && <Row label="Mère" value={selected.nom_mere} />}
+                {selected.email && <Row label="Email" value={<a href={`mailto:${selected.email}`} className="text-blue-600 hover:underline">{selected.email}</a>} />}
+                {selected.telephone && <Row label="Téléphone" value={<a href={`tel:${selected.telephone}`} className="text-blue-600 hover:underline">{selected.telephone}</a>} />}
               </Section>
 
               {/* Société */}
@@ -525,6 +528,47 @@ export default function Dashboard() {
                   <input value={settings.adresse_cabinet || ''} onChange={e => setSettings(s => ({ ...s, adresse_cabinet: e.target.value }))}
                     placeholder="ex : 35 Boulevard de la Muette 95140 Garges Les Gonesse" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
+              </div>
+
+              {/* Messagerie */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Messagerie (envoi des emails)</h3>
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+                  Configurez votre serveur mail pour envoyer les liens de signature et recevoir les notifications.
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Votre email (notifications reçues ici)</label>
+                  <input value={settings.email_cabinet || ''} onChange={e => setSettings(s => ({ ...s, email_cabinet: e.target.value }))}
+                    type="email" placeholder="l.levy@2c-expertise.fr" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Serveur SMTP (host)</label>
+                    <input value={settings.smtp_host || ''} onChange={e => setSettings(s => ({ ...s, smtp_host: e.target.value }))}
+                      placeholder="smtp.gmail.com / smtp.office365.com" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Port</label>
+                    <input type="number" value={settings.smtp_port || 587} onChange={e => setSettings(s => ({ ...s, smtp_port: parseInt(e.target.value)||587 }))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Email expéditeur</label>
+                    <input value={settings.smtp_from || ''} onChange={e => setSettings(s => ({ ...s, smtp_from: e.target.value }))}
+                      placeholder="cabinet@2c-expertise.fr" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Identifiant SMTP</label>
+                    <input value={settings.smtp_user || ''} onChange={e => setSettings(s => ({ ...s, smtp_user: e.target.value }))}
+                      placeholder="votre@email.com" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe SMTP</label>
+                    <input type="password" value={settings.smtp_pass || ''} onChange={e => setSettings(s => ({ ...s, smtp_pass: e.target.value }))}
+                      placeholder="••••••••" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400">Gmail : utilisez un <strong>mot de passe d'application</strong> (pas votre mot de passe habituel). Orange/SFR : paramètres fournis par votre FAI.</p>
               </div>
 
               {/* DocuSign */}
@@ -673,6 +717,8 @@ export default function Dashboard() {
                   }} placeholder="ex: 10 rue Jean Jaurès 95200 Sarcelles" className={inp} /></Field>
                   <Field label="Père (DNC)"><input value={form.nom_pere} onChange={e => setForm({...form, nom_pere: e.target.value})} placeholder="Prénom NOM" className={inp} /></Field>
                   <Field label="Mère (DNC)"><input value={form.nom_mere} onChange={e => setForm({...form, nom_mere: e.target.value})} placeholder="Prénom NOM" className={inp} /></Field>
+                  <Field label="Email"><input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} placeholder="client@email.com" className={inp} /></Field>
+                  <Field label="Téléphone"><input type="tel" value={form.telephone} onChange={e => setForm({...form, telephone: e.target.value})} placeholder="06 12 34 56 78" className={inp} /></Field>
                 </div>
               </FormSection>
 
@@ -753,8 +799,8 @@ function Section({ title, children }) {
 
 function SendSignatureButton({ client }) {
   const [open, setOpen]       = useState(false);
-  const [email, setEmail]     = useState('');
-  const [name, setName]       = useState('');
+  const [email, setEmail]     = useState(client.email || '');
+  const [name, setName]       = useState(`${client.prenom || ''} ${client.nom || ''}`.trim());
   const [docs, setDocs]       = useState(['statuts']);
   const [sending, setSending] = useState(false);
   const [result, setResult]   = useState(null);
