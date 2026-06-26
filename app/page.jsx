@@ -459,8 +459,10 @@ export default function Dashboard() {
                   Tout télécharger (ZIP)
                 </a>
                 <SendSignatureButton client={selected} />
-                <SignedDocsPanel clientId={selected.id} />
               </Section>
+
+              {/* Documents signés */}
+              <SignedDocsSectionPanel clientId={selected.id} />
 
               {/* Suivi manuel */}
               <Section title="Suivi manuel">
@@ -755,7 +757,7 @@ function Section({ title, children }) {
   );
 }
 
-function SignedDocsPanel({ clientId }) {
+function SignedDocsSectionPanel({ clientId }) {
   const [requests, setRequests] = useState(null);
 
   useEffect(() => {
@@ -767,24 +769,28 @@ function SignedDocsPanel({ clientId }) {
   if (!requests || requests.length === 0) return null;
 
   return (
-    <div className="mt-2 border border-emerald-200 rounded-xl p-3 bg-emerald-50 space-y-2">
-      <div className="text-xs font-semibold text-emerald-800">✅ Documents signés</div>
-      {requests.map(req => (
-        <div key={req.id} className="space-y-1">
-          <div className="text-xs text-slate-500">
-            Signé par <strong>{req.signer_name}</strong> le {new Date(req.signed_at).toLocaleDateString('fr-FR')}
+    <Section title="Documents signés">
+      <div className="space-y-3">
+        {requests.map(req => (
+          <div key={req.id} className="border border-emerald-200 rounded-xl p-3 bg-emerald-50 space-y-2">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="text-emerald-600 font-semibold">✅ Signé</span>
+              <span>par <strong>{req.signer_name}</strong></span>
+              <span>le {new Date(req.signed_at).toLocaleDateString('fr-FR')}</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(req.documents || []).map(d => (
+                <a key={d.type} href={`/api/sign/${req.id}/download?doc=${d.type}`} target="_blank"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  {d.label || d.type} signé
+                </a>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {(req.documents || []).map(d => (
-              <a key={d.type} href={`/api/sign/${req.id}/download?doc=${d.type}`} target="_blank"
-                className="flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors">
-                ⬇ {d.label || d.type} signé
-              </a>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </Section>
   );
 }
 
