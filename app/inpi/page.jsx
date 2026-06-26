@@ -33,6 +33,9 @@ export default function InpiPage() {
     try {
       const res = await fetch('/api/inpi-auth');
       const json = await res.json();
+      if (json.error === 'TOKEN_EXPIRED' || json.error === 'TOKEN_MISSING') {
+        throw new Error(json.error);
+      }
       if (json.error) throw new Error(json.error);
       setData(json);
       try { localStorage.setItem('inpi_cache', JSON.stringify(json)); } catch {}
@@ -85,6 +88,14 @@ export default function InpiPage() {
       </header>
 
       <div className="px-6 py-6 max-w-6xl mx-auto space-y-6">
+        {/* Bandeau expiration token */}
+        {data?.expiresInMin != null && data.expiresInMin < 30 && (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl px-4 py-3 flex items-center justify-between text-sm text-amber-800">
+            <span>⚠️ Token INPI expire dans <strong>{data.expiresInMin} min</strong> — renouvelez-le dans ⚙️ Paramètres</span>
+            <a href="https://guichet-unique.inpi.fr" target="_blank" className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium">Ouvrir INPI</a>
+          </div>
+        )}
+
         {/* Stats */}
         {(!loading || data) && !error && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -110,11 +121,31 @@ export default function InpiPage() {
 
         {/* États */}
         {loading && !data && <p className="text-center text-slate-400 py-16">Chargement des formalités…</p>}
-        {error && (
+        {error === 'TOKEN_EXPIRED' && (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 text-sm text-amber-800 space-y-3">
+            <p className="font-bold text-base">🔑 Token INPI expiré (valide 2h)</p>
+            <p>Le token JWT INPI dure 2 heures. Pour le renouveler :</p>
+            <ol className="list-decimal list-inside space-y-1 text-amber-700">
+              <li>Ouvrez <a href="https://guichet-unique.inpi.fr" target="_blank" className="underline font-medium">guichet-unique.inpi.fr</a> (vous êtes déjà connecté via Google)</li>
+              <li>F12 → Application → Cookies → <strong>guichet-unique.inpi.fr</strong></li>
+              <li>Copiez la valeur du cookie <strong>BEARER</strong></li>
+              <li>Collez-la dans <strong>⚙️ Paramètres → INPI</strong> et sauvegardez</li>
+            </ol>
+            <button onClick={load} className="mt-1 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium">
+              Réessayer après mise à jour
+            </button>
+          </div>
+        )}
+        {error === 'TOKEN_MISSING' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-800 space-y-2">
+            <p className="font-bold">🔑 Token INPI non configuré</p>
+            <p>Allez dans <strong>⚙️ Paramètres → INPI</strong>, collez votre token BEARER depuis guichet-unique.inpi.fr et sauvegardez.</p>
+          </div>
+        )}
+        {error && error !== 'TOKEN_EXPIRED' && error !== 'TOKEN_MISSING' && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-sm text-red-600">
             <p className="font-semibold mb-1">Erreur de connexion INPI</p>
             <p>{error}</p>
-            <p className="mt-2 text-red-400">Renseignez vos identifiants INPI dans ⚙️ Paramètres.</p>
           </div>
         )}
 

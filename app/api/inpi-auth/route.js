@@ -10,6 +10,14 @@ function adminSb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+// ── Décoder l'expiration depuis le JWT ────────────────────────────────────────
+function jwtExpiry(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    return payload.exp ? payload.exp * 1000 : null;
+  } catch { return null; }
+}
+
 // ── Tokens par user dans Supabase ─────────────────────────────────────────────
 async function getStoredToken(userId) {
   const { data } = await adminSb().from('tokens').select('value,expires_at')
@@ -141,14 +149,18 @@ async function getBearer(userId, creds) {
     }
   }
 
-  // 3. Bearer manuel des settings (sans cache = premier appel ou après expiration totale)
+  // 3. Bearer manuel des settings — lire l'expiration depuis le JWT lui-même
   if (creds.bearer) {
-    // Stocker pour la prochaine fois (durée 110 min)
-    await storeTokens(userId, creds.bearer, refreshToken || null, 110 * 60 * 1000);
+    const exp = jwtExpiry(creds.bearer);
+    if (exp && exp < Date.now()) {
+      throw new Error(`TOKEN_EXPIRED:${exp}`);
+    }
+    const ttl = exp ? exp - Date.now() - 5 * 60 * 1000 : 110 * 60 * 1000;
+    await storeTokens(userId, creds.bearer, null, Math.max(ttl, 0));
     return creds.bearer;
   }
 
-  throw new Error('Token INPI expiré. Reconnectez-vous sur guichet-unique.inpi.fr, copiez BEARER et REFRESH_TOKEN dans ⚙️ Paramètres.');
+  throw new Error('TOKEN_MISSING');
 }
 
 // ── Appel API guichet-unique (avec retry refresh sur 401) ─────────────────────
@@ -210,9 +222,19 @@ export async function GET() {
       if (items.length < 50) break;
     }
 
-    return NextResponse.json({ ok: true, stats: buildStatsFromList(formalites), total: formalites.length, formalites });
+    const exp = jwtExpiry(bearer);
+    const expiresInMin = exp ? Math.round((exp - Date.now()) / 60000) : null;
+    return NextResponse.json({ ok: true, stats: buildStatsFromList(formalites), total: formalites.length, formalites, expiresInMin });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+    const msg = e.message;
+    if (msg.startsWith('TOKEN_EXPIRED:')) {
+      const exp = parseInt(msg.split(':')[1]);
+      return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED', expiredAt: new Date(exp).toISOString() }, { status: 401 });
+    }
+    if (msg === 'TOKEN_MISSING') {
+      return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
+    }
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
 
