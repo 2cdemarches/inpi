@@ -144,7 +144,7 @@ export async function GET() {
     const user = await requireUser();
     const sb   = await createSupabaseServer();
     const { data } = await sb.from('signature_requests')
-      .select('*, clients(denomination, type_societe)')
+      .select('id, client_id, token, status, documents, signer_name, signer_ip, signed_at, expires_at, created_at, audit_trail, clients(denomination, type_societe)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     return NextResponse.json({ ok: true, requests: data || [] });

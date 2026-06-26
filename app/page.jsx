@@ -363,7 +363,6 @@ export default function Dashboard() {
                   {/* Grille statuts — 4 colonnes fixes alignées */}
                   <div className="flex-shrink-0 grid grid-cols-4 gap-x-2 gap-y-0 items-center" style={{gridTemplateColumns:'repeat(4,minmax(5.5rem,auto))'}}>
                     <div className="flex justify-center"><Badge label={client.type_societe} color="purple" /></div>
-                    <div className="flex justify-center"><DsStatus envelopeId={client.docusign_envelope_id} /></div>
                     <div className="flex justify-center"><InpiStatus denomination={client.denomination} /></div>
                     <div className="flex justify-center">
                       {(client.statuts_manuels || []).length > 0
@@ -395,11 +394,8 @@ export default function Dashboard() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
-              {/* 3 statuts en évidence */}
-              <div className="grid grid-cols-3 gap-3">
-                <StatusCard icon="✍️" title="Signature" color="blue">
-                  <DsStatus envelopeId={selected.docusign_envelope_id} />
-                </StatusCard>
+              {/* Statuts en évidence */}
+              <div className="grid grid-cols-2 gap-3">
                 <StatusCard icon="🏛️" title="INPI" color="orange">
                   <InpiStatus denomination={selected.denomination} />
                 </StatusCard>
@@ -568,40 +564,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* DocuSign */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">DocuSign</h3>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Integration Key (Client ID)</label>
-                  <input value={settings.docusign_integration_key || ''} onChange={e => setSettings(s => ({ ...s, docusign_integration_key: e.target.value }))}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">User ID (API Username)</label>
-                  <input value={settings.docusign_user_id || ''} onChange={e => setSettings(s => ({ ...s, docusign_user_id: e.target.value }))}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Account ID</label>
-                  <input value={settings.docusign_account_id || ''} onChange={e => setSettings(s => ({ ...s, docusign_account_id: e.target.value }))}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Clé privée RSA</label>
-                  <textarea value={settings.docusign_private_key || ''} onChange={e => setSettings(s => ({ ...s, docusign_private_key: e.target.value }))}
-                    rows={4} placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Environnement</label>
-                  <select value={settings.docusign_env || 'production'} onChange={e => setSettings(s => ({ ...s, docusign_env: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                    <option value="production">Production</option>
-                    <option value="demo">Démo / Sandbox</option>
-                  </select>
-                </div>
-              </div>
-
               {/* INPI */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI (Guichet unique)</h3>
@@ -728,7 +690,6 @@ export default function Dashboard() {
                     setForm({...form, date_signature: v});
                   }} placeholder="JJ/MM/AAAA" maxLength={10} className={inp} /></Field>
                   <Field label="Ville signature"><input value={form.ville_signature} onChange={e => setForm({...form, ville_signature: e.target.value})} placeholder={form.ville_siege || ''} className={inp} /></Field>
-                  <Field label="ID Enveloppe DocuSign" span={2}><input value={form.docusign_envelope_id} onChange={e => setForm({...form, docusign_envelope_id: e.target.value})} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inp} /></Field>
                   <Field label="Notes" span={2}><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} rows={2} className={inp} /></Field>
                 </div>
               </FormSection>

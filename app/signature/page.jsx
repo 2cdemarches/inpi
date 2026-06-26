@@ -51,8 +51,17 @@ export default function SignaturePage() {
 
   useEffect(() => {
     fetch('/api/sign')
-      .then(r => r.json())
-      .then(d => { setRequests(d.requests || []); setLoading(false); });
+      .then(r => {
+        if (r.status === 401) { window.location.href = '/login'; return null; }
+        return r.json();
+      })
+      .then(d => {
+        if (!d) return;
+        if (d.error) { setLoading(false); return; }
+        setRequests(d.requests || []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
   async function copyLink(token) {
