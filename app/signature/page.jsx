@@ -68,6 +68,15 @@ export default function SignaturePage() {
     await navigator.clipboard.writeText(`${window.location.origin}/sign/${token}`);
   }
 
+  async function toggleReminder(id, enabled) {
+    setRequests(r => r.map(x => x.id === id ? { ...x, reminders_enabled: enabled } : x));
+    await fetch(`/api/sign?id=${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reminders_enabled: enabled }),
+    });
+  }
+
   async function deleteRequest(id) {
     if (!confirm('Supprimer cette demande ?')) return;
     await fetch(`/api/sign?id=${id}`, { method: 'DELETE' });
@@ -210,10 +219,19 @@ export default function SignaturePage() {
                       {/* Actions */}
                       <div className="flex flex-wrap gap-2">
                         {status === 'pending' && (
-                          <button onClick={() => copyLink(req.token)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
-                            🔗 Copier le lien
-                          </button>
+                          <>
+                            <button onClick={() => copyLink(req.token)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                              🔗 Copier le lien
+                            </button>
+                            <button onClick={() => toggleReminder(req.id, !req.reminders_enabled)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${req.reminders_enabled ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                              {req.reminders_enabled ? '🔔 Relances activées' : '🔕 Activer les relances'}
+                            </button>
+                            {req.reminders_enabled && req.last_reminder_at && (
+                              <span className="text-xs text-slate-400">Dernier rappel : {fmt(req.last_reminder_at)}</span>
+                            )}
+                          </>
                         )}
 
                         {status === 'signed' && (req.documents || []).map(d => (

@@ -84,14 +84,16 @@ export async function POST(req) {
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: req2, error } = await admin.from('signature_requests').insert({
-      client_id:  clientId,
-      user_id:    user.id,
+      client_id:        clientId,
+      user_id:          user.id,
       token,
-      documents:  storedDocs,
-      status:     'pending',
-      expires_at: expiresAt,
-      signer_name: emailName || '',
-      audit_trail: [{ event: 'created', at: new Date().toISOString(), by: user.email }],
+      documents:        storedDocs,
+      status:           'pending',
+      expires_at:       expiresAt,
+      signer_name:      emailName || `${client.prenom || ''} ${client.nom || ''}`.trim(),
+      signer_email:     emailOverride || client.email || '',
+      reminders_enabled: false,
+      audit_trail:      [{ event: 'created', at: new Date().toISOString(), by: user.email }],
     }).select().single();
 
     if (error) throw new Error(error.message);
@@ -144,7 +146,7 @@ export async function GET() {
     const user  = await requireUser();
     const admin = adminSb(); // service role pour bypasser RLS
     const { data, error } = await admin.from('signature_requests')
-      .select('id, client_id, token, status, documents, signer_name, signer_ip, signed_at, expires_at, created_at, audit_trail, clients(denomination, type_societe)')
+      .select('id, client_id, token, status, documents, signer_name, signer_email, signer_ip, signed_at, expires_at, created_at, audit_trail, reminders_enabled, last_reminder_at, clients(denomination, type_societe)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
@@ -154,4 +156,20 @@ export async function GET() {
   }
 }
 
-// DELETE /api/sign?id=xxx — déjà défini plus haut, on le laisse
+// PATCH /api/sign?id=xxx  { reminders_enabled: true/false }
+export async function PATCH(req) {
+  try {
+    const user  = await requireUser();
+    const admin = adminSb();
+    const id    = new URL(req.url).searchParams.get('id');
+    const body  = await req.json();
+    if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
+    const { error } = await admin.from('signature_requests')
+      .update({ reminders_enabled: body.reminders_enabled })
+      .eq('id', id).eq('user_id', user.id);
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
