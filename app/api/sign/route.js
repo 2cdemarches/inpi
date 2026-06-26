@@ -127,11 +127,11 @@ export async function POST(req) {
 // DELETE /api/sign?id=xxx
 export async function DELETE(req) {
   try {
-    const user = await requireUser();
-    const sb   = await createSupabaseServer();
-    const id   = new URL(req.url).searchParams.get('id');
+    const user  = await requireUser();
+    const admin = adminSb();
+    const id    = new URL(req.url).searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
-    await sb.from('signature_requests').delete().eq('id', id).eq('user_id', user.id);
+    await admin.from('signature_requests').delete().eq('id', id).eq('user_id', user.id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -141,14 +141,17 @@ export async function DELETE(req) {
 // GET /api/sign — liste des demandes pour l'utilisateur connecté
 export async function GET() {
   try {
-    const user = await requireUser();
-    const sb   = await createSupabaseServer();
-    const { data } = await sb.from('signature_requests')
+    const user  = await requireUser();
+    const admin = adminSb(); // service role pour bypasser RLS
+    const { data, error } = await admin.from('signature_requests')
       .select('id, client_id, token, status, documents, signer_name, signer_ip, signed_at, expires_at, created_at, audit_trail, clients(denomination, type_societe)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true, requests: data || [] });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
+// DELETE /api/sign?id=xxx — déjà défini plus haut, on le laisse
