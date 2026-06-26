@@ -80,19 +80,42 @@ async function loginToInpi(email, password) {
 
 // ── Refresh du BEARER ─────────────────────────────────────────────────────────
 async function tryRefresh(bearer, refreshToken) {
-  const res = await fetch(`${GU}/api/token/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA, Referer: `${GU}/`, Origin: GU, Cookie: `BEARER=${bearer}; REFRESH_TOKEN=${refreshToken}` },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  }).catch(() => null);
-  if (!res) return null;
-  const setCookies = getSetCookies(res);
-  const cookies = parseCookies(setCookies);
-  if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
-  if (res.ok) {
-    const json = await res.json().catch(() => ({}));
-    const token = json.token ?? json.access_token ?? json.bearer;
-    if (token) return { bearer: token, refresh: json.refresh_token ?? refreshToken };
+  // Essayer plusieurs endpoints de refresh
+  const endpoints = [
+    `${GU}/api/token/refresh`,
+    `${GU}/api/sso/refresh`,
+    `${GU}/api/refresh`,
+    `${PROC}/security/v1/inpiconnect/refresh`,
+  ];
+
+  for (const url of endpoints) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'User-Agent': UA,
+        Referer: `${GU}/`,
+        Origin: GU,
+        Cookie: `BEARER=${bearer}; REFRESH_TOKEN=${refreshToken}`,
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    }).catch(() => null);
+
+    if (!res) continue;
+
+    // Chercher le nouveau bearer dans les cookies Set-Cookie
+    const setCookies = getSetCookies(res);
+    const cookies = parseCookies(setCookies);
+    if (cookies['BEARER']) return { bearer: cookies['BEARER'], refresh: cookies['REFRESH_TOKEN'] ?? refreshToken };
+
+    // Ou dans le body JSON
+    if (res.ok) {
+      const txt = await res.text().catch(() => '');
+      const json = JSON.parse(txt || '{}');
+      const token = json.token ?? json.access_token ?? json.bearer ?? json.jwt;
+      if (token) return { bearer: token, refresh: json.refresh_token ?? refreshToken };
+    }
   }
   return null;
 }
@@ -111,6 +134,10 @@ async function getBearer(userId, creds) {
     if (renewed) {
       await storeTokens(userId, renewed.bearer, renewed.refresh);
       return renewed.bearer;
+    }
+    // Refresh échoué — diagnostic dans l'erreur
+    if (!creds.bearer) {
+      throw new Error('Le REFRESH_TOKEN INPI est expiré ou invalide. Reconnectez-vous sur guichet-unique.inpi.fr et recopiez BEARER + REFRESH_TOKEN dans ⚙️ Paramètres.');
     }
   }
 
