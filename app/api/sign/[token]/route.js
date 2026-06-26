@@ -84,9 +84,11 @@ export async function POST(req, { params }) {
     const x    = width - boxW - 40;
     const y    = 50;
 
-    // Effacer le fond du cadre (blanc) et y placer la signature dessinée
+    // Effacer le fond du cadre (blanc) et y placer la signature
     lastPage.drawRectangle({ x, y, width: boxW, height: boxH, color: rgb(1, 1, 1) });
     lastPage.drawImage(sigImage, { x: x + 4, y: y + 4, width: boxW - 8, height: boxH - 8 });
+    // Redessiner la bordure du cadre (effacée par le rectangle blanc)
+    lastPage.drawRectangle({ x, y, width: boxW, height: boxH, borderColor: rgb(0.2, 0.2, 0.2), borderWidth: 0.8 });
 
     // Horodatage en bas de page (le nom est déjà écrit par paraphe.js)
     const stamp = `Signé électroniquement le ${new Date(signedAt).toLocaleString('fr-FR')} — IP: ${signerIp}`;
