@@ -32,6 +32,7 @@ function newForm() {
     siege_social: '', ville_siege: '', objet_social: DEFAULT_OBJET_SOCIAL,
     adresse: '', adresse_cp: '', adresse_ville: '',
     nb_actions: 100, date_signature: '', ville_signature: '',
+    date_premier_exercice: '',
     email: '', telephone: '',
     docusign_envelope_id: '', notes: '',
   };
@@ -707,6 +708,11 @@ export default function Dashboard() {
                     setForm({...form, date_signature: v});
                   }} placeholder="JJ/MM/AAAA" maxLength={10} className={inp} /></Field>
                   <Field label="Ville signature"><input value={form.ville_signature} onChange={e => setForm({...form, ville_signature: e.target.value})} placeholder={form.ville_siege || ''} className={inp} /></Field>
+                  <Field label="Clôture 1er exercice" span={2}>
+                    <input value={form.date_premier_exercice} onChange={e => setForm({...form, date_premier_exercice: e.target.value})}
+                      placeholder="ex : 31 décembre 2026" className={inp} />
+                    <p className="text-xs text-slate-400 mt-1">Article 16 des statuts — doit être postérieur à la date de signature</p>
+                  </Field>
                   <Field label="Notes" span={2}><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} rows={2} className={inp} /></Field>
                 </div>
               </FormSection>
