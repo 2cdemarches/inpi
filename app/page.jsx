@@ -158,6 +158,7 @@ export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '', email_cabinet: '', smtp_host: '', smtp_port: 587, smtp_user: '', smtp_pass: '', smtp_from: '', docusign_integration_key: '', docusign_user_id: '', docusign_account_id: '', docusign_private_key: '', docusign_env: 'production', inpi_login: '', inpi_password: '' });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [signRequests, setSignRequests]     = useState([]);
 
   const loadClients = useCallback(async () => {
     setLoading(true);
@@ -171,6 +172,10 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { loadClients(); }, [loadClients]);
+
+  useEffect(() => {
+    fetch('/api/sign').then(r => r.json()).then(d => setSignRequests(d.requests || [])).catch(() => {});
+  }, []);
 
   const loadModeles = useCallback(async () => {
     const res = await fetch('/api/modeles');
@@ -360,15 +365,21 @@ export default function Dashboard() {
                     <p className="text-xs text-slate-400 truncate">{client.civilite} {client.prenom} {client.nom}</p>
                   </div>
 
-                  {/* Grille statuts — 4 colonnes fixes alignées */}
-                  <div className="flex-shrink-0 grid grid-cols-4 gap-x-2 gap-y-0 items-center" style={{gridTemplateColumns:'repeat(4,minmax(5.5rem,auto))'}}>
-                    <div className="flex justify-center"><Badge label={client.type_societe} color="purple" /></div>
-                    <div className="flex justify-center"><InpiStatus denomination={client.denomination} /></div>
-                    <div className="flex justify-center">
-                      {(client.statuts_manuels || []).length > 0
-                        ? <Badge label={client.statuts_manuels.at(-1).label} color="orange" dot />
-                        : <Badge label="—" color="slate" />}
-                    </div>
+                  {/* Grille statuts */}
+                  <div className="flex-shrink-0 flex items-center gap-2">
+                    <Badge label={client.type_societe} color="purple" />
+                    <InpiStatus denomination={client.denomination} />
+                    {(() => {
+                      const reqs = signRequests.filter(r => r.client_id === client.id);
+                      const signed  = reqs.filter(r => r.status === 'signed');
+                      const pending = reqs.filter(r => r.status === 'pending' && new Date(r.expires_at) >= new Date());
+                      if (signed.length  > 0) return <Badge label="✅ Signé"    color="green" />;
+                      if (pending.length > 0) return <Badge label="⏳ En attente" color="amber" />;
+                      return null;
+                    })()}
+                    {(client.statuts_manuels || []).length > 0
+                      ? <Badge label={client.statuts_manuels.at(-1).label} color="orange" dot />
+                      : null}
                   </div>
                 </div>
               </div>
@@ -462,7 +473,7 @@ export default function Dashboard() {
               </Section>
 
               {/* Documents signés */}
-              <SignedDocsSectionPanel clientId={selected.id} />
+              <SignedDocsSectionPanel clientId={selected.id} signRequests={signRequests} />
 
               {/* Suivi manuel */}
               <Section title="Suivi manuel">
@@ -757,33 +768,34 @@ function Section({ title, children }) {
   );
 }
 
-function SignedDocsSectionPanel({ clientId }) {
-  const [requests, setRequests] = useState(null);
+function SignedDocsSectionPanel({ clientId, signRequests = [] }) {
+  const requests = signRequests.filter(r => r.client_id === clientId && r.status === 'signed');
+  if (requests.length === 0) return null;
 
-  useEffect(() => {
-    fetch('/api/sign')
-      .then(r => r.json())
-      .then(d => setRequests((d.requests || []).filter(r => r.client_id === clientId && r.status === 'signed')));
-  }, [clientId]);
-
-  if (!requests || requests.length === 0) return null;
+  const dl = <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>;
 
   return (
     <Section title="Documents signés">
       <div className="space-y-3">
         {requests.map(req => (
           <div key={req.id} className="border border-emerald-200 rounded-xl p-3 bg-emerald-50 space-y-2">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="text-emerald-600 font-semibold">✅ Signé</span>
-              <span>par <strong>{req.signer_name}</strong></span>
-              <span>le {new Date(req.signed_at).toLocaleDateString('fr-FR')}</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="text-emerald-600 font-semibold">✅ Signé</span>
+                <span>par <strong>{req.signer_name}</strong></span>
+                <span>le {new Date(req.signed_at).toLocaleDateString('fr-FR')}</span>
+              </div>
+              {/* ZIP tous les docs de cette demande */}
+              <a href={`/api/sign/${req.id}/zip`} target="_blank"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors">
+                {dl} Tout télécharger (ZIP)
+              </a>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {(req.documents || []).map(d => (
                 <a key={d.type} href={`/api/sign/${req.id}/download?doc=${d.type}`} target="_blank"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                  {d.label || d.type} signé
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors">
+                  {dl} {d.label || d.type}
                 </a>
               ))}
             </div>
