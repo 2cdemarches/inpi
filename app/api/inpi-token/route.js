@@ -15,13 +15,14 @@ function jwtExpiry(token) {
 }
 
 function corsHeaders(origin) {
-  // Accepter uniquement les requêtes venant de guichet-unique.inpi.fr ou de notre propre domaine
-  const allowed = [ALLOWED_ORIGIN, process.env.NEXT_PUBLIC_APP_URL].filter(Boolean);
-  const o = allowed.includes(origin) ? origin : ALLOWED_ORIGIN;
+  // Accepter guichet-unique.inpi.fr, les extensions Chrome et notre propre domaine
+  const isChromeExt = origin?.startsWith('chrome-extension://');
+  const isAllowed   = isChromeExt || origin === ALLOWED_ORIGIN || origin === process.env.NEXT_PUBLIC_APP_URL;
+  const o = isAllowed ? origin : ALLOWED_ORIGIN;
   return {
-    'Access-Control-Allow-Origin':  o,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Origin':      o || '*',
+    'Access-Control-Allow-Methods':     'POST, OPTIONS',
+    'Access-Control-Allow-Headers':     'Content-Type, Authorization',
     'Access-Control-Allow-Credentials': 'true',
   };
 }
