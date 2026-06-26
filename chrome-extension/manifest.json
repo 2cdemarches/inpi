@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "2C Expertise — Sync INPI",
+  "version": "1.0.0",
+  "description": "Synchronise automatiquement votre token INPI avec l'outil 2C Expertise.",
+  "permissions": [
+    "cookies",
+    "alarms",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://guichet-unique.inpi.fr/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Sync INPI",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

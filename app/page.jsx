@@ -179,7 +179,15 @@ export default function Dashboard() {
   useEffect(() => { loadModeles(); }, [loadModeles]);
 
   useEffect(() => {
-    fetch('/api/settings').then(r => r.json()).then(d => setSettings(d)).catch(() => {});
+    fetch('/api/settings').then(r => r.json()).then(async d => {
+      // Générer un bookmarklet_token unique si absent
+      if (!d.bookmarklet_token) {
+        const tok = crypto.randomUUID().replace(/-/g, '');
+        await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookmarklet_token: tok }) });
+        d = { ...d, bookmarklet_token: tok };
+      }
+      setSettings(d);
+    }).catch(() => {});
   }, []);
 
   async function saveSettings() {
@@ -555,22 +563,26 @@ export default function Dashboard() {
               {/* INPI */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI (Guichet unique)</h3>
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1">
-                  <p><strong>À faire une seule fois :</strong> Connectez-vous sur <a href="https://guichet-unique.inpi.fr" target="_blank" className="underline">guichet-unique.inpi.fr</a>, puis :</p>
-                  <p>F12 → Application → Cookies → guichet-unique.inpi.fr</p>
-                  <p>Copiez <strong>BEARER</strong> et <strong>REFRESH_TOKEN</strong> ci-dessous. Le renouvellement sera ensuite automatique.</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">BEARER token</label>
-                  <textarea value={settings.inpi_bearer || ''} onChange={e => setSettings(s => ({ ...s, inpi_bearer: e.target.value }))}
-                    rows={3} placeholder="eyJ..."
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">REFRESH_TOKEN</label>
-                  <input value={settings.inpi_refresh_token || ''} onChange={e => setSettings(s => ({ ...s, inpi_refresh_token: e.target.value }))}
-                    placeholder="..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                </div>
+                {settings.bookmarklet_token ? (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-1">
+                      <p className="font-bold text-sm">🏛️ Extension Chrome — connexion automatique</p>
+                      <p>L'extension se connecte à INPI toutes les 90 min sans aucune action de votre part.</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Votre token personnel <span className="text-slate-400">(à copier dans l'extension)</span></label>
+                      <div className="flex gap-2">
+                        <input readOnly value={settings.bookmarklet_token}
+                          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono bg-slate-50 text-slate-700" />
+                        <button onClick={() => navigator.clipboard.writeText(settings.bookmarklet_token)}
+                          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 whitespace-nowrap">
+                          Copier
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-400">URL de l'app : <span className="font-mono">{typeof window !== 'undefined' ? window.location.origin : ''}</span></p>
+                  </div>
+                ) : <p className="text-xs text-slate-400">Chargement…</p>}
               </div>
 
             </div>
