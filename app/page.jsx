@@ -449,6 +449,7 @@ export default function Dashboard() {
                   </svg>
                   Tout télécharger (ZIP)
                 </a>
+                <SendSignatureButton client={selected} />
               </Section>
 
               {/* Suivi manuel */}
@@ -746,6 +747,91 @@ function Section({ title, children }) {
     <div>
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">{title}</h3>
       <div className="space-y-1.5">{children}</div>
+    </div>
+  );
+}
+
+function SendSignatureButton({ client }) {
+  const [open, setOpen]       = useState(false);
+  const [email, setEmail]     = useState('');
+  const [name, setName]       = useState('');
+  const [docs, setDocs]       = useState(['statuts']);
+  const [sending, setSending] = useState(false);
+  const [result, setResult]   = useState(null);
+
+  const ALL_DOCS = [
+    { type: 'statuts',       label: 'Statuts' },
+    { type: 'pouvoir',       label: 'Pouvoir' },
+    { type: 'souscripteurs', label: 'Liste souscripteurs' },
+    { type: 'dnc',           label: 'DNC' },
+  ];
+
+  function toggle(type) {
+    setDocs(d => d.includes(type) ? d.filter(x => x !== type) : [...d, type]);
+  }
+
+  async function send() {
+    if (!email || docs.length === 0) return;
+    setSending(true);
+    const res = await fetch('/api/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: client.id, documents: docs, email, emailName: name }),
+    }).then(r => r.json());
+    setSending(false);
+    if (res.ok) setResult(res);
+    else alert('Erreur : ' + res.error);
+  }
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)}
+      className="flex items-center justify-center gap-2 w-full px-3 py-2.5 mt-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-xl transition-colors">
+      ✉️ Envoyer pour signature
+    </button>
+  );
+
+  return (
+    <div className="mt-2 border border-emerald-200 rounded-xl p-4 bg-emerald-50 space-y-3">
+      {result ? (
+        <div className="space-y-2 text-center">
+          <div className="text-2xl">✅</div>
+          <p className="text-sm font-semibold text-emerald-800">Email envoyé à {email}</p>
+          <p className="text-xs text-slate-500 break-all">Lien : <a href={result.signUrl} target="_blank" className="underline">{result.signUrl}</a></p>
+          <button onClick={() => { setOpen(false); setResult(null); }} className="text-xs text-slate-500 underline">Fermer</button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-emerald-800">Envoyer pour signature</span>
+            <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Email du signataire *</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="client@email.com"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Nom du signataire</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Prénom NOM"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Documents à inclure</label>
+            <div className="flex flex-wrap gap-2">
+              {ALL_DOCS.map(d => (
+                <button key={d.type} onClick={() => toggle(d.type)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${docs.includes(d.type) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button onClick={send} disabled={sending || !email || docs.length === 0}
+            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-colors">
+            {sending ? 'Envoi…' : '✉️ Envoyer le lien de signature'}
+          </button>
+        </>
+      )}
     </div>
   );
 }
