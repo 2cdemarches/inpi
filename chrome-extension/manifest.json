@@ -1,22 +1,35 @@
 {
   "manifest_version": 3,
-  "name": "2C Expertise — Sync INPI",
-  "version": "1.0.0",
-  "description": "Synchronise automatiquement votre token INPI avec l'outil 2C Expertise.",
+  "name": "2C Expertise — Sync INPI & JAL",
+  "version": "1.1.0",
+  "description": "Synchronise le token INPI et remplit automatiquement les formulaires JAL.",
   "permissions": [
     "cookies",
     "alarms",
     "storage"
   ],
   "host_permissions": [
-    "https://guichet-unique.inpi.fr/*"
+    "https://guichet-unique.inpi.fr/*",
+    "https://inpi-ten.vercel.app/*",
+    "https://www.annonces-legales.fr/*",
+    "https://annonces-legales.fr/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.annonces-legales.fr/*",
+        "https://annonces-legales.fr/*"
+      ],
+      "js": ["content-jal.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Sync INPI",
+    "default_title": "2C Expertise",
     "default_icon": {
       "16":  "icons/icon16.png",
       "48":  "icons/icon48.png",
