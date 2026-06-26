@@ -188,6 +188,16 @@ export default function Dashboard() {
         d = { ...d, bookmarklet_token: tok };
       }
       setSettings(d);
+
+      // Retour OAuth Gmail
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('gmail_ok')) {
+        setShowSettings(true);
+        window.history.replaceState({}, '', '/');
+      } else if (p.get('gmail_error')) {
+        alert('Erreur Gmail : ' + decodeURIComponent(p.get('gmail_error')));
+        window.history.replaceState({}, '', '/');
+      }
     }).catch(() => {});
   }, []);
 
@@ -530,22 +540,37 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Messagerie */}
+              {/* Messagerie Gmail */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Messagerie (signature électronique)</h3>
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-                  Les emails sont envoyés via <strong>Resend</strong>. Renseignez votre email pour recevoir les notifications de signature.
-                </div>
+                {settings.gmail_email ? (
+                  <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-lg">✅</div>
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold text-green-800">Gmail connecté</div>
+                      <div className="text-xs text-green-600">{settings.gmail_email}</div>
+                    </div>
+                    <a href="/api/gmail-auth"
+                      className="text-xs text-slate-500 hover:text-slate-700 underline">Changer</a>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
+                      Connectez votre Gmail pour envoyer les liens de signature et recevoir les notifications directement depuis votre adresse email.
+                    </div>
+                    <a href="/api/gmail-auth"
+                      className="flex items-center justify-center gap-2 w-full py-2.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl text-sm font-medium text-slate-700 transition-colors">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24"><path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.6 4.418 1.582L19.91 3C17.782 1.145 15.055 0 12 0 7.27 0 3.198 2.698 1.24 6.65l4.026 3.115z"/><path fill="#34A853" d="M16.04 18.013c-1.09.703-2.474 1.078-4.04 1.078a7.077 7.077 0 0 1-6.723-4.823l-4.04 3.067A11.965 11.965 0 0 0 12 24c2.933 0 5.735-1.043 7.834-3l-3.793-2.987z"/><path fill="#4A90E2" d="M19.834 21c2.195-2.048 3.62-5.096 3.62-9 0-.71-.109-1.473-.272-2.182H12v4.637h6.436c-.317 1.559-1.17 2.766-2.395 3.558L19.834 21z"/><path fill="#FBBC05" d="M5.277 14.268A7.12 7.12 0 0 1 4.909 12c0-.782.125-1.533.357-2.235L1.24 6.65A11.934 11.934 0 0 0 0 12c0 1.92.445 3.73 1.237 5.335l4.04-3.067z"/></svg>
+                      Connecter mon Gmail
+                    </a>
+                  </div>
+                )}
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Votre email (notifications reçues ici)</label>
-                  <input value={settings.email_cabinet || ''} onChange={e => setSettings(s => ({ ...s, email_cabinet: e.target.value }))}
-                    type="email" placeholder="l.levy@2c-expertise.fr" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Email expéditeur affiché</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Nom affiché dans les emails</label>
                   <input value={settings.smtp_from || ''} onChange={e => setSettings(s => ({ ...s, smtp_from: e.target.value }))}
-                    placeholder="2C Expertise <signature@votre-domaine.fr>" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  <p className="text-xs text-slate-400 mt-1">Laissez vide pour utiliser l'expéditeur par défaut Resend.</p>
+                    placeholder={`${settings.nom_cabinet || '2C Expertise'} <${settings.gmail_email || 'votre@gmail.com'}>`}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  <p className="text-xs text-slate-400 mt-1">Laissez vide pour utiliser le nom du cabinet + votre Gmail.</p>
                 </div>
               </div>
 
