@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { generateAnnonceLegale } from '@/lib/annonce-legale';
 
 const STATUTS_MANUELS = [
   'Acompte reçu',
@@ -475,6 +476,9 @@ export default function Dashboard() {
               {/* Documents signés */}
               <SignedDocsSectionPanel clientId={selected.id} signRequests={signRequests} />
 
+              {/* Annonce légale automatique */}
+              <AnnonceLegalePanel client={selected} signRequests={signRequests} onClientUpdate={c => setSelected(c)} />
+
               {/* Suivi manuel */}
               <Section title="Suivi manuel">
                 <div className="space-y-2 mb-3">
@@ -801,6 +805,90 @@ function SignedDocsSectionPanel({ clientId, signRequests = [] }) {
             </div>
           </div>
         ))}
+      </div>
+    </Section>
+  );
+}
+
+function AnnonceLegalePanel({ client, signRequests, onClientUpdate }) {
+  const isSigned = signRequests.some(r => r.client_id === client.id && r.status === 'signed');
+  const generated = useMemo(() => generateAnnonceLegale(client), [client]);
+
+  const [text, setText]       = useState(client.annonce_legale || generated);
+  const [saving, setSaving]   = useState(false);
+  const [saved, setSaved]     = useState(false);
+  const [copied, setCopied]   = useState(false);
+  const [publiee, setPubliee] = useState(!!client.annonce_legale_publiee);
+
+  // Regénérer si le client change et qu'il n'y a pas encore de texte sauvegardé
+  useEffect(() => {
+    if (!client.annonce_legale) setText(generateAnnonceLegale(client));
+  }, [client]);
+
+  if (!isSigned) return null;
+
+  async function save(published) {
+    setSaving(true);
+    const body = { annonce_legale: text, annonce_legale_publiee: published ?? publiee };
+    const res  = await fetch(`/api/clients/${client.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await res.json();
+    if (d.ok && onClientUpdate) onClientUpdate(d.client);
+    if (published !== undefined) setPubliee(published);
+    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
+  }
+
+  async function copy() {
+    await navigator.clipboard.writeText(text);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <Section title="📰 Annonce légale">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500">Texte généré automatiquement à partir des données du client. Modifiez si besoin.</p>
+          {publiee && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+              ✅ Publiée
+            </span>
+          )}
+        </div>
+
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          rows={10}
+          className="w-full text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl p-3 resize-y focus:outline-none focus:ring-2 focus:ring-indigo-300 text-slate-700 leading-relaxed"
+        />
+
+        <div className="flex flex-wrap gap-2">
+          <button onClick={copy}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            {copied ? '✓ Copié !' : '📋 Copier le texte'}
+          </button>
+          <button onClick={() => save(undefined)}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors">
+            {saved ? '✓ Sauvegardé' : saving ? '…' : '💾 Enregistrer'}
+          </button>
+          <button onClick={() => setText(generated)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
+            ↺ Regénérer
+          </button>
+          {!publiee ? (
+            <button onClick={() => save(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold transition-colors ml-auto">
+              ✅ Marquer comme publiée
+            </button>
+          ) : (
+            <button onClick={() => save(false)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors ml-auto">
+              ↩ Annuler publication
+            </button>
+          )}
+        </div>
       </div>
     </Section>
   );
