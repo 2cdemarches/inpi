@@ -87,6 +87,7 @@ export default function SignPage() {
     setSubmitting(false);
     if (res.ok) setStep('done');
     else alert('Erreur : ' + res.error);
+    // notifError est non bloquant — la signature est quand même enregistrée
   }
 
   if (step === 'loading') return (

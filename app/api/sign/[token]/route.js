@@ -128,9 +128,14 @@ export async function POST(req, { params }) {
   }).eq('id', request.id);
 
   // Notifier le cabinet par email
+  let notifError = null;
   try {
     const { data: settings } = await sb.from('settings').select('*').eq('user_id', request.user_id).single();
-    const cabinetEmail = settings?.email_cabinet || process.env.CABINET_EMAIL || 'l.levy@2c-expertise.fr';
+    // Utiliser gmail_user comme destinataire de fallback si email_cabinet absent
+    const cabinetEmail = settings?.email_cabinet || settings?.gmail_user;
+    if (!cabinetEmail) throw new Error('Aucun email cabinet configuré dans Paramètres');
+
+    const APP_URL_SIGN = process.env.NEXT_PUBLIC_APP_URL || 'https://inpi-ten.vercel.app';
     await sendMail(settings, {
       to:      cabinetEmail,
       subject: `✅ Documents signés — ${signerName}`,
@@ -140,16 +145,19 @@ export async function POST(req, { params }) {
           <p><strong>${signerName}</strong> vient de signer les documents.</p>
           <table style="border-collapse:collapse;margin:16px 0">
             <tr><td style="padding:4px 12px 4px 0;color:#64748b">Date</td><td><strong>${new Date(signedAt).toLocaleString('fr-FR')}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0;color:#64748b">Signataire</td><td>${signerName}</td></tr>
             <tr><td style="padding:4px 12px 4px 0;color:#64748b">IP</td><td>${signerIp}</td></tr>
             <tr><td style="padding:4px 12px 4px 0;color:#64748b">Documents</td><td>${signedDocs.map(d => d.label).join(', ')}</td></tr>
           </table>
-          <a href="${APP_URL}" style="display:inline-block;background:#1e40af;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">
-            Voir dans l'outil →
+          <a href="${APP_URL_SIGN}/signature" style="display:inline-block;background:#1e40af;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">
+            Voir le suivi des signatures →
           </a>
         </div>
       `,
     });
-  } catch (_) {} // notification non bloquante
+  } catch (e) {
+    notifError = e.message; // on renvoie l'erreur dans la réponse pour debug
+  }
 
-  return NextResponse.json({ ok: true, signedAt, docs: signedDocs });
+  return NextResponse.json({ ok: true, signedAt, docs: signedDocs, notifError });
 }

@@ -463,6 +463,7 @@ export default function Dashboard() {
                   Tout télécharger (ZIP)
                 </a>
                 <SendSignatureButton client={selected} />
+                <SignedDocsPanel clientId={selected.id} />
               </Section>
 
               {/* Suivi manuel */}
@@ -789,6 +790,39 @@ function Section({ title, children }) {
     <div>
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">{title}</h3>
       <div className="space-y-1.5">{children}</div>
+    </div>
+  );
+}
+
+function SignedDocsPanel({ clientId }) {
+  const [requests, setRequests] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/sign')
+      .then(r => r.json())
+      .then(d => setRequests((d.requests || []).filter(r => r.client_id === clientId && r.status === 'signed')));
+  }, [clientId]);
+
+  if (!requests || requests.length === 0) return null;
+
+  return (
+    <div className="mt-2 border border-emerald-200 rounded-xl p-3 bg-emerald-50 space-y-2">
+      <div className="text-xs font-semibold text-emerald-800">✅ Documents signés</div>
+      {requests.map(req => (
+        <div key={req.id} className="space-y-1">
+          <div className="text-xs text-slate-500">
+            Signé par <strong>{req.signer_name}</strong> le {new Date(req.signed_at).toLocaleDateString('fr-FR')}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {(req.documents || []).map(d => (
+              <a key={d.type} href={`/api/sign/${req.id}/download?doc=${d.type}`} target="_blank"
+                className="flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors">
+                ⬇ {d.label || d.type} signé
+              </a>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
