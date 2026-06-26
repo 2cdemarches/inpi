@@ -124,6 +124,20 @@ export async function POST(req) {
   }
 }
 
+// DELETE /api/sign?id=xxx
+export async function DELETE(req) {
+  try {
+    const user = await requireUser();
+    const sb   = await createSupabaseServer();
+    const id   = new URL(req.url).searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
+    await sb.from('signature_requests').delete().eq('id', id).eq('user_id', user.id);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
 // GET /api/sign — liste des demandes pour l'utilisateur connecté
 export async function GET() {
   try {
