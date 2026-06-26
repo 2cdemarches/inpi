@@ -532,43 +532,21 @@ export default function Dashboard() {
 
               {/* Messagerie */}
               <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Messagerie (envoi des emails)</h3>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Messagerie (signature électronique)</h3>
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-                  Configurez votre serveur mail pour envoyer les liens de signature et recevoir les notifications.
+                  Les emails sont envoyés via <strong>Resend</strong>. Renseignez votre email pour recevoir les notifications de signature.
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Votre email (notifications reçues ici)</label>
                   <input value={settings.email_cabinet || ''} onChange={e => setSettings(s => ({ ...s, email_cabinet: e.target.value }))}
                     type="email" placeholder="l.levy@2c-expertise.fr" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Serveur SMTP (host)</label>
-                    <input value={settings.smtp_host || ''} onChange={e => setSettings(s => ({ ...s, smtp_host: e.target.value }))}
-                      placeholder="smtp.gmail.com / smtp.office365.com" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Port</label>
-                    <input type="number" value={settings.smtp_port || 587} onChange={e => setSettings(s => ({ ...s, smtp_port: parseInt(e.target.value)||587 }))}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Email expéditeur</label>
-                    <input value={settings.smtp_from || ''} onChange={e => setSettings(s => ({ ...s, smtp_from: e.target.value }))}
-                      placeholder="cabinet@2c-expertise.fr" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Identifiant SMTP</label>
-                    <input value={settings.smtp_user || ''} onChange={e => setSettings(s => ({ ...s, smtp_user: e.target.value }))}
-                      placeholder="votre@email.com" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe SMTP</label>
-                    <input type="password" value={settings.smtp_pass || ''} onChange={e => setSettings(s => ({ ...s, smtp_pass: e.target.value }))}
-                      placeholder="••••••••" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Email expéditeur affiché</label>
+                  <input value={settings.smtp_from || ''} onChange={e => setSettings(s => ({ ...s, smtp_from: e.target.value }))}
+                    placeholder="2C Expertise <signature@votre-domaine.fr>" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  <p className="text-xs text-slate-400 mt-1">Laissez vide pour utiliser l'expéditeur par défaut Resend.</p>
                 </div>
-                <p className="text-xs text-slate-400">Gmail : utilisez un <strong>mot de passe d'application</strong> (pas votre mot de passe habituel). Orange/SFR : paramètres fournis par votre FAI.</p>
               </div>
 
               {/* DocuSign */}
