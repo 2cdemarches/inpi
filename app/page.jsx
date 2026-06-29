@@ -472,6 +472,7 @@ export default function Dashboard() {
                   Tout télécharger (ZIP)
                 </a>
                 <SendSignatureButton client={selected} />
+                <SendSuiviButton client={selected} onSync={syncClient} />
               </Section>
 
               {/* Documents signés */}
@@ -986,30 +987,21 @@ function SendSignatureButton({ client }) {
   );
 }
 
-function FormSection({ title, children }) {
-  return (
-    <div>
-      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">{title}</h3>
-      {children}
-    </div>
-  );
-}
+function SendSuiviButton({ client, onSync }) {
+  const [open, setOpen]     = useState(false);
+  const [email, setEmail]   = useState(client.email || '');
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
 
-function Field({ label, children, span }) {
-  return (
-    <div className={span === 2 ? 'col-span-2' : ''}>
-      <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
-      {children}
-    </div>
-  );
-}
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://inpi-ten.vercel.app';
 
-function Row({ label, value }) {
-  if (!value) return null;
-  return (
-    <div className="flex gap-3 text-sm">
-      <span className="text-slate-400 w-28 flex-shrink-0">{label}</span>
-      <span className="text-slate-700">{value}</span>
-    </div>
-  );
-}
+  async function send() {
+    setSending(true);
+    const res = await fetch(`/api/clients/${client.id}/send-suivi`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    }).then(r => r.json());
+    setSending(false);
+    if (res.ok) setResult(res);
+    else alert
