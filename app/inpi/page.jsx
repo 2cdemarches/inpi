@@ -20,9 +20,7 @@ function Badge({ label, color = 'slate' }) {
 }
 
 export default function InpiPage() {
-  const [data, setData]       = useState(() => {
-    try { const c = localStorage.getItem('inpi_cache'); return c ? JSON.parse(c) : null; } catch { return null; }
-  });
+  const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [search, setSearch]   = useState('');
@@ -43,6 +41,9 @@ export default function InpiPage() {
     finally { setLoading(false); }
   }
 
+  useEffect(() => {
+    try { const c = localStorage.getItem('inpi_cache'); if (c) setData(JSON.parse(c)); } catch {}
+  }, []);
   useEffect(() => { load(); }, []);
 
   const formalites = data?.formalites || [];
@@ -124,7 +125,7 @@ export default function InpiPage() {
         {(error === 'TOKEN_EXPIRED' || error === 'TOKEN_MISSING') && (
           <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 text-sm text-amber-800 space-y-3">
             <p className="font-bold text-base">🔑 Connexion INPI requise</p>
-            <p>Renseignez votre email et mot de passe INPI dans <strong>⚙️ Paramètres → INPI (API RNE)</strong> et sauvegardez.</p>
+            <p>Renseignez votre <strong>REFRESH_TOKEN</strong> dans <strong>⚙️ Paramètres → INPI (Guichet Unique)</strong> et sauvegardez.</p>
             <button onClick={load} className="mt-1 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium">
               Réessayer
             </button>
