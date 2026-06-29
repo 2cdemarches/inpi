@@ -88,19 +88,31 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
     }
 
-    // 1. Bearer en cache DB encore valide ?
-    let bearer = await getCachedBearer(user.id);
+    // 1. Vérifier si le bearer stocké est encore valide (décoder le JWT directement)
+    //    Ne JAMAIS appeler /api/user/logged si le bearer est encore valide —
+    //    INPI détecte l'appel serveur et retourne BEARER=deleted, invalidant la session.
+    function jwtIsValid(token, marginMin = 5) {
+      if (!token || token === 'deleted') return false;
+      try {
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+        return !!payload.exp && payload.exp * 1000 > Date.now() + marginMin * 60 * 1000;
+      } catch { return false; }
+    }
 
-    // 2. Sinon, renouveler via /api/user/logged
+    let bearer = jwtIsValid(storedBearer) ? storedBearer : null;
+
+    // 2. Si expiré, renouveler via /api/user/logged (seulement si vraiment nécessaire)
     if (!bearer) {
+      if (!refreshToken) {
+        return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
+      }
       const renewed = await refreshBearer(storedBearer, refreshToken);
-      if (!renewed) {
+      // Ignorer "deleted" — INPI invalide la session si appelé depuis un serveur
+      if (!renewed || renewed.bearer === 'deleted' || !jwtIsValid(renewed.bearer, 0)) {
         return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
       }
       bearer = renewed.bearer;
       await storeBearer(user.id, bearer, renewed.refresh);
-
-      // Mettre à jour le bearer dans settings aussi
       await sb.from('settings').update({ inpi_bearer: bearer }).eq('user_id', user.id);
     }
 
