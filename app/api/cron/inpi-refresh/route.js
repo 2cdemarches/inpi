@@ -123,28 +123,54 @@ async function getSsoUrl(allCookies) {
 }
 
 // ── Étape 3 : Échanger l'URL SSO → BEARER + REFRESH_TOKEN ────────────────────
+// Le BEARER est posé dans le Set-Cookie d'une réponse 302 intermédiaire.
+// redirect:'manual' permet de capturer les cookies avant la redirection.
 async function exchangeSsoUrl(ssoUrl) {
-  const res = await fetch(ssoUrl, {
-    method:   'GET',
-    redirect: 'follow',
-    headers: {
-      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'fr-FR,fr;q=0.9',
-      'Connection':      'keep-alive',
-      'Referer':         `${PORTAIL}/?/home`,
-      'User-Agent':      UA,
-      'sec-fetch-dest':  'document',
-      'sec-fetch-mode':  'navigate',
-      'sec-fetch-site':  'cross-site',
-    },
-  });
+  const commonHeaders = {
+    'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'fr-FR,fr;q=0.9',
+    'Connection':      'keep-alive',
+    'User-Agent':      UA,
+    'sec-fetch-dest':  'document',
+    'sec-fetch-mode':  'navigate',
+    'sec-fetch-site':  'cross-site',
+    'Referer':         `${PORTAIL}/?/home`,
+  };
 
-  const cookies = parseCookieHeader(getSetCookies(res));
-  const bearer  = cookies['BEARER']        || null;
-  const refresh = cookies['REFRESH_TOKEN'] || null;
+  let bearer  = null;
+  let refresh = null;
+  let url     = ssoUrl;
+  let cookieJar = '';
+
+  // Suivre manuellement les redirects pour capter les Set-Cookie à chaque étape
+  for (let i = 0; i < 10; i++) {
+    const res = await fetch(url, {
+      method:   'GET',
+      redirect: 'manual',
+      headers:  { ...commonHeaders, ...(cookieJar ? { Cookie: cookieJar } : {}) },
+    });
+
+    // Accumuler tous les cookies de cette réponse
+    const newCookies = parseCookieHeader(getSetCookies(res));
+    for (const [k, v] of Object.entries(newCookies)) {
+      if (v === 'deleted') continue;
+      // Mettre à jour le jar
+      const existing = cookieJar.split('; ').filter(c => !c.startsWith(`${k}=`));
+      cookieJar = [...existing, `${k}=${v}`].filter(Boolean).join('; ');
+      if (k === 'BEARER')        bearer  = v;
+      if (k === 'REFRESH_TOKEN') refresh = v;
+    }
+
+    if (bearer) break;
+
+    // Suivre la redirection si présente
+    const location = res.headers.get('location');
+    if (!location) break;
+    url = location.startsWith('http') ? location : `${GU}${location}`;
+  }
 
   if (!bearer || bearer === 'deleted') {
-    throw new Error(`BEARER non reçu (statut ${res.status})`);
+    throw new Error('BEARER non reçu après échange SSO');
   }
   return { bearer, refresh };
 }
