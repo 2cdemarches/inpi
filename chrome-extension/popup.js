@@ -50,4 +50,9 @@ document.getElementById('btn-sync').addEventListener('click', async () => {
   });
 });
 
+document.getElementById('btn-inpi').addEventListener('click', () => {
+  chrome.runtime.sendMessage({ action: 'open-inpi' });
+  window.close();
+});
+
 load();

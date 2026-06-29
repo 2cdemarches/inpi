@@ -6,7 +6,9 @@
   "permissions": [
     "cookies",
     "alarms",
-    "storage"
+    "storage",
+    "notifications",
+    "tabs"
   ],
   "host_permissions": [
     "https://guichet-unique.inpi.fr/*",
