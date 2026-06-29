@@ -175,7 +175,35 @@ async function exchangeSsoUrl(ssoUrl, incapCookie = '') {
   return { bearer, refresh };
 }
 
-// ── Login complet en 4 étapes ─────────────────────────────────────────────────
+// ── Renouvellement via REFRESH_TOKEN (sans SSO) ───────────────────────────────
+// Prioritaire sur le login complet car ne dépend pas du WAF Incapsula.
+async function refreshViaToken(refreshToken) {
+  const res = await fetch(`${GU}/api/token/refresh`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'Accept':       'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent':   UA,
+      'Referer':      `${GU}/`,
+      'Origin':       GU,
+      'FromFO':       '1',
+      'Cookie':       `REFRESH_TOKEN=${refreshToken}`,
+    },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  if (!res.ok && res.status !== 0) {
+    const msg = await res.text().catch(() => '');
+    throw new Error(`Refresh token échoué : ${res.status} ${msg.slice(0, 100)}`);
+  }
+  const cookies = parseCookieHeader(getSetCookies(res));
+  const bearer  = cookies['BEARER']        || null;
+  const refresh = cookies['REFRESH_TOKEN'] || null;
+  if (!bearer) throw new Error('BEARER absent après refresh token');
+  return { bearer, refresh };
+}
+
+// ── Login complet en 4 étapes (fallback si pas de refresh token) ──────────────
 async function fullLogin(email, password, incapCookie = '') {
   const wafCookies     = await getWafCookies();
   const { allCookies } = await loginPortail(email, password, wafCookies);
@@ -235,14 +263,32 @@ export async function GET(req) {
     }
 
     try {
-      const tokens = await fullLogin(inpi_email, inpi_password, inpi_incap_cookie || '');
+      let tokens = null;
+      let method = '';
+
+      // Priorité 1 : refresh token (pas de WAF)
+      if (inpi_refresh_token) {
+        try {
+          tokens = await refreshViaToken(inpi_refresh_token);
+          method = 'refresh_token';
+        } catch (e) {
+          // fallback login complet
+        }
+      }
+
+      // Priorité 2 : login complet via SSO (peut être bloqué par WAF)
+      if (!tokens) {
+        tokens = await fullLogin(inpi_email, inpi_password, inpi_incap_cookie || '');
+        method = 'full_login';
+      }
+
       if (!tokens) {
         results.push({ user_id, status: 'failed', reason: 'login_no_bearer' });
         continue;
       }
 
       const expMin = await storeTokens(sb, user_id, tokens.bearer, tokens.refresh || inpi_refresh_token);
-      results.push({ user_id, status: 'refreshed', expiresIn: expMin });
+      results.push({ user_id, status: 'refreshed', method, expiresIn: expMin });
     } catch (e) {
       results.push({ user_id, status: 'error', error: e.message });
     }
