@@ -201,19 +201,22 @@ export async function GET() {
       refresh:  (settings?.inpi_refresh_token || process.env.INPI_REFRESH_TOKEN || '').trim() || null,
     };
 
+    const username = (settings?.inpi_rne_username || process.env.INPI_RNE_USERNAME || '').trim();
+    const password = (settings?.inpi_rne_password || process.env.INPI_RNE_PASSWORD || '').trim();
+
     // Auto-login avec username/password si pas de bearer valide
     let bearer;
     try {
       bearer = await getBearer(user.id, creds);
-    } catch (e) {
-      const username = (settings?.inpi_rne_username || process.env.INPI_RNE_USERNAME || '').trim();
-      const password = (settings?.inpi_rne_password || process.env.INPI_RNE_PASSWORD || '').trim();
+    } catch {
       if (username && password) {
+        // Nettoyer les anciens tokens expirés avant de re-login
+        await adminSb().from('tokens').delete().in('key', ['inpi_bearer', 'inpi_refresh']).eq('user_id', user.id).catch(() => {});
         const logged = await loginToInpi(username, password);
         await storeTokens(user.id, logged.bearer, logged.refresh);
         bearer = logged.bearer;
       } else {
-        throw e;
+        throw new Error('TOKEN_MISSING');
       }
     }
 
