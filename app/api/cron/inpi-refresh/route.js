@@ -53,7 +53,7 @@ async function loginPortail(email, password) {
       'sec-fetch-mode':   'cors',
       'sec-fetch-site':   'same-origin',
     },
-    body: JSON.stringify({ username: email, password }),
+    body: JSON.stringify({ ref: email, password }),
   });
 
   if (!res.ok) throw new Error(`Login portail échoué : ${res.status}`);
