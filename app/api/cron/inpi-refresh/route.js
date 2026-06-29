@@ -33,8 +33,28 @@ function getSetCookies(res) {
   return raw ? raw.split(/,(?=\s*\w+=)/) : [];
 }
 
+// ── Étape 0 : Récupérer les cookies WAF (Incapsula) ─────────────────────────
+async function getWafCookies() {
+  const res = await fetch(`${PORTAIL}/`, {
+    method: 'GET',
+    redirect: 'follow',
+    headers: {
+      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'fr-FR,fr;q=0.9',
+      'Connection':      'keep-alive',
+      'User-Agent':      UA,
+      'sec-fetch-dest':  'document',
+      'sec-fetch-mode':  'navigate',
+      'sec-fetch-site':  'none',
+    },
+  });
+  const cookies = parseCookieHeader(getSetCookies(res));
+  // Retourner la chaîne de cookies pour injection dans les requêtes suivantes
+  return Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ');
+}
+
 // ── Étape 1 : Login → PHPSESSID ──────────────────────────────────────────────
-async function loginPortail(email, password) {
+async function loginPortail(email, password, wafCookies = '') {
   const res = await fetch(`${PORTAIL}/security/v1/inpiconnect/login`, {
     method: 'POST',
     headers: {
@@ -52,21 +72,28 @@ async function loginPortail(email, password) {
       'sec-fetch-dest':   'empty',
       'sec-fetch-mode':   'cors',
       'sec-fetch-site':   'same-origin',
+      'Cookie':           wafCookies,
     },
     body: JSON.stringify({ ref: email, password }),
   });
 
   if (!res.ok) throw new Error(`Login portail échoué : ${res.status}`);
 
-  const sessionCookies = parseCookieHeader(getSetCookies(res));
-  const phpsessid = sessionCookies['PHPSESSID'] || null;
+  // Accumuler les cookies de la réponse (PHPSESSID + éventuels cookies WAF mis à jour)
+  const newCookies = parseCookieHeader(getSetCookies(res));
+  const phpsessid = newCookies['PHPSESSID'] || null;
   if (!phpsessid) throw new Error('PHPSESSID non reçu après login');
 
-  return phpsessid;
+  // Fusionner les cookies WAF avec le nouveau PHPSESSID
+  const allCookies = wafCookies
+    ? wafCookies.split('; ').filter(c => !c.startsWith('PHPSESSID=')).join('; ') + `; PHPSESSID=${phpsessid}`
+    : `PHPSESSID=${phpsessid}`;
+
+  return { phpsessid, allCookies };
 }
 
 // ── Étape 2 : Récupérer l'URL SSO avec le token JWT ──────────────────────────
-async function getSsoUrl(phpsessid) {
+async function getSsoUrl(allCookies) {
   const res = await fetch(`${PORTAIL}/app/v1/website/url?wsCode=COMPANY_FORM_CHECK`, {
     method: 'GET',
     headers: {
@@ -82,7 +109,7 @@ async function getSsoUrl(phpsessid) {
       'sec-fetch-dest':   'empty',
       'sec-fetch-mode':   'cors',
       'sec-fetch-site':   'same-origin',
-      'Cookie':           `PHPSESSID=${phpsessid}`,
+      'Cookie':           allCookies,
     },
   });
 
@@ -122,10 +149,11 @@ async function exchangeSsoUrl(ssoUrl) {
   return { bearer, refresh };
 }
 
-// ── Login complet en 3 étapes ─────────────────────────────────────────────────
+// ── Login complet en 4 étapes ─────────────────────────────────────────────────
 async function fullLogin(email, password) {
-  const phpsessid = await loginPortail(email, password);
-  const ssoUrl    = await getSsoUrl(phpsessid);
+  const wafCookies            = await getWafCookies();
+  const { allCookies }        = await loginPortail(email, password, wafCookies);
+  const ssoUrl                = await getSsoUrl(allCookies);
   return await exchangeSsoUrl(ssoUrl);
 }
 
