@@ -29,7 +29,12 @@ export async function middleware(request) {
     return response;
   }
 
-  // Tout le reste nécessite une session
+  // Portail de suivi client — accès sans connexion
+  if (pathname.startsWith('/suivi') || pathname.startsWith('/api/suivi')) {
+    return response;
+  }
+
+  // Tout le reste necessite une session
   if (!user) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
