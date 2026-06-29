@@ -33,7 +33,7 @@ function getSetCookies(res) {
   return raw ? raw.split(/,(?=\s*\w+=)/) : [];
 }
 
-// ── Étape 1 : Login sur procedures.inpi.fr ────────────────────────────────────
+// ── Étape 1 : Login → PHPSESSID ──────────────────────────────────────────────
 async function loginPortail(email, password) {
   const res = await fetch(`${PORTAIL}/security/v1/inpiconnect/login`, {
     method: 'POST',
@@ -58,77 +58,57 @@ async function loginPortail(email, password) {
 
   if (!res.ok) throw new Error(`Login portail échoué : ${res.status}`);
 
-  // Récupérer le PHPSESSID du Set-Cookie
   const sessionCookies = parseCookieHeader(getSetCookies(res));
   const phpsessid = sessionCookies['PHPSESSID'] || null;
+  if (!phpsessid) throw new Error('PHPSESSID non reçu après login');
 
-  const json = await res.json().catch(() => null);
-  // La réponse contient data.csrftoken mais pas de token SSO direct
-  const csrftoken = json?.data?.csrftoken || null;
-
-  return { phpsessid, csrftoken, json };
+  return phpsessid;
 }
 
-// ── Étape 2 : Obtenir le token SSO depuis procedures.inpi.fr ─────────────────
-async function getSsoToken(phpsessid, csrftoken) {
-  // Essayer les endpoints connus pour récupérer le JWT SSO vers guichet-unique
-  const endpoints = [
-    `/security/v1/inpiconnect/sso-token`,
-    `/security/v1/inpiconnect/token`,
-    `/api/sso/token`,
-    `/security/v1/inpiconnect/redirect?service=guichet`,
-  ];
-
-  for (const ep of endpoints) {
-    try {
-      const res = await fetch(`${PORTAIL}${ep}`, {
-        method: 'GET',
-        redirect: 'manual',
-        headers: {
-          'Accept':          'application/json, text/*',
-          'Connection':      'keep-alive',
-          'Origin':          PORTAIL,
-          'Referer':         `${PORTAIL}/?/`,
-          'User-Agent':      UA,
-          'x-csrf-token':    csrftoken || '',
-          'x-client-version': '1.27.1-1782135754341',
-          'Cookie':          phpsessid ? `PHPSESSID=${phpsessid}` : '',
-        },
-      });
-
-      if (res.status === 302 || res.status === 301) {
-        // Redirect vers guichet avec ?token=JWT
-        const location = res.headers.get('location') || '';
-        const match = location.match(/[?&]token=(eyJ[^&]+)/);
-        if (match) return match[1];
-      }
-
-      if (res.ok) {
-        const body = await res.json().catch(() => null);
-        const token = body?.token || body?.ssoToken || body?.jwt || body?.data?.token;
-        if (token && token.startsWith('eyJ')) return token;
-      }
-    } catch { /* essayer l'endpoint suivant */ }
-  }
-  return null;
-}
-
-// ── Étape 3 : Échange SSO → BEARER sur guichet-unique.inpi.fr ────────────────
-async function exchangeSsoToken(ssoToken, phpsessid) {
-  const url = `${GU}/login/sso/e-procedure?token=${encodeURIComponent(ssoToken)}`;
-  const res = await fetch(url, {
+// ── Étape 2 : Récupérer l'URL SSO avec le token JWT ──────────────────────────
+async function getSsoUrl(phpsessid) {
+  const res = await fetch(`${PORTAIL}/app/v1/website/url?wsCode=COMPANY_FORM_CHECK`, {
     method: 'GET',
+    headers: {
+      'Accept':           'application/json, text/*',
+      'Accept-Encoding':  'gzip, deflate, br, zstd',
+      'Accept-Language':  'fr-FR,fr;q=0.9',
+      'Connection':       'keep-alive',
+      'Referer':          `${PORTAIL}/?/home`,
+      'User-Agent':       UA,
+      'x-client-version': '1.27.1-1782135754341',
+      'sec-ch-ua':        '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-fetch-dest':   'empty',
+      'sec-fetch-mode':   'cors',
+      'sec-fetch-site':   'same-origin',
+      'Cookie':           `PHPSESSID=${phpsessid}`,
+    },
+  });
+
+  if (!res.ok) throw new Error(`URL SSO échouée : ${res.status}`);
+
+  const json = await res.json();
+  const ssoUrl = json?.data?.useUrl || null;
+  if (!ssoUrl) throw new Error(`useUrl absent de la réponse : ${JSON.stringify(json?.data)}`);
+
+  return ssoUrl;
+}
+
+// ── Étape 3 : Échanger l'URL SSO → BEARER + REFRESH_TOKEN ────────────────────
+async function exchangeSsoUrl(ssoUrl) {
+  const res = await fetch(ssoUrl, {
+    method:   'GET',
     redirect: 'follow',
     headers: {
       'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'fr-FR,fr;q=0.9',
       'Connection':      'keep-alive',
-      'Referer':         `${PORTAIL}/?/`,
+      'Referer':         `${PORTAIL}/?/home`,
       'User-Agent':      UA,
       'sec-fetch-dest':  'document',
       'sec-fetch-mode':  'navigate',
       'sec-fetch-site':  'cross-site',
-      ...(phpsessid ? { 'Cookie': `PHPSESSID=${phpsessid}` } : {}),
     },
   });
 
@@ -136,19 +116,17 @@ async function exchangeSsoToken(ssoToken, phpsessid) {
   const bearer  = cookies['BEARER']        || null;
   const refresh = cookies['REFRESH_TOKEN'] || null;
 
-  if (!bearer || bearer === 'deleted') return null;
+  if (!bearer || bearer === 'deleted') {
+    throw new Error(`BEARER non reçu (statut ${res.status})`);
+  }
   return { bearer, refresh };
 }
 
-// ── Login complet (portail → SSO → guichet) ───────────────────────────────────
+// ── Login complet en 3 étapes ─────────────────────────────────────────────────
 async function fullLogin(email, password) {
-  const { phpsessid, csrftoken } = await loginPortail(email, password);
-  if (!phpsessid) throw new Error('PHPSESSID non reçu après login');
-
-  const ssoToken = await getSsoToken(phpsessid, csrftoken);
-  if (!ssoToken) throw new Error('Token SSO introuvable — endpoint de redirection inconnu');
-
-  return await exchangeSsoToken(ssoToken, phpsessid);
+  const phpsessid = await loginPortail(email, password);
+  const ssoUrl    = await getSsoUrl(phpsessid);
+  return await exchangeSsoUrl(ssoUrl);
 }
 
 // ── Stocker les tokens en DB ──────────────────────────────────────────────────
