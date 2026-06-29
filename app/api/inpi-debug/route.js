@@ -33,7 +33,7 @@ export async function GET(req) {
 
   const sb = adminSb();
   const { data: s } = await sb.from('settings')
-    .select('inpi_email, inpi_password')
+    .select('inpi_email, inpi_password, inpi_incap_cookie')
     .eq('user_id', 'a18b292a-13b8-453b-9a94-b5b50f227c51')
     .single();
 
@@ -89,6 +89,11 @@ export async function GET(req) {
 
   // Étape 3 : Suivre l'URL SSO manuellement
   if (ssoUrl) {
+    // Injecter le cookie Incapsula de guichet-unique.inpi.fr si disponible
+    if (s.inpi_incap_cookie) {
+      const incapEntry = `visid_incap_2207353=${s.inpi_incap_cookie}`;
+      cookieJar = cookieJar ? `${cookieJar}; ${incapEntry}` : incapEntry;
+    }
     let url = ssoUrl;
     for (let i = 0; i < 8; i++) {
       const r = await fetch(url, {
