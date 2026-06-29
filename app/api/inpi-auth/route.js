@@ -1,101 +1,231 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServer, requireUser } from '@/lib/supabase-server';
-import { getInpiToken } from '@/lib/inpi';
+import { createClient } from '@supabase/supabase-js';
 
-const RNE = 'https://registre-national-entreprises.inpi.fr/api';
+const GU   = 'https://guichet-unique.inpi.fr';
+const PROC = 'https://procedures.inpi.fr';
+const UA   = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+function adminSb() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+// ── Cache token par userId ────────────────────────────────────────────────────
+async function getCachedBearer(userId) {
+  const { data } = await adminSb().from('tokens')
+    .select('value,expires_at').eq('key', 'inpi_bearer').eq('user_id', userId).single();
+  if (!data) return null;
+  if (data.expires_at && new Date(data.expires_at) < new Date(Date.now() + 5 * 60 * 1000)) return null;
+  return data.value;
+}
+
+async function storeBearer(userId, bearer, ttlMs = 90 * 60 * 1000) {
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+  await adminSb().from('tokens').upsert(
+    { key: 'inpi_bearer', user_id: userId, value: bearer, expires_at: expiresAt, updated_at: new Date().toISOString() },
+    { onConflict: 'key,user_id' }
+  );
+}
+
+// ── Login INPI + échange SSO pour obtenir le BEARER GU ───────────────────────
+async function loginAndGetBearer(email, password) {
+  // Étape 1 : charger la page login pour les cookies de session
+  const sessionRes = await fetch(`${PROC}/?/login`, {
+    headers: { 'User-Agent': UA, Accept: 'text/html' },
+    redirect: 'follow',
+  }).catch(() => null);
+  const sessionCookies = sessionRes ? getSetCookiesStr(sessionRes) : '';
+
+  // Étape 2 : login INPIConnect
+  const loginRes = await fetch(`${PROC}/security/v1/inpiconnect/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=UTF-8',
+      Accept: 'application/json, text/*',
+      'User-Agent': UA,
+      Origin: PROC,
+      Referer: `${PROC}/?/login`,
+      'Accept-Language': 'fr-FR,fr;q=0.9',
+      ...(sessionCookies ? { Cookie: sessionCookies } : {}),
+    },
+    body: JSON.stringify({ ref: email, password }),
+  });
+
+  if (!loginRes.ok) {
+    const txt = await loginRes.text().catch(() => '');
+    throw new Error(`Login INPI échoué (${loginRes.status}) : ${txt.slice(0, 150)}`);
+  }
+
+  const loginJson = await loginRes.json().catch(() => ({}));
+  const csrftoken = loginJson?.data?.csrftoken;
+  const loginCookies = getSetCookiesStr(loginRes);
+  const allCookies = [sessionCookies, loginCookies].filter(Boolean).join('; ');
+
+  // Étape 3 : échange du csrftoken contre un BEARER GU via le endpoint SSO
+  // Essayer plusieurs patterns de callback SSO
+  const ssoUrls = [
+    `${GU}/sso/callback?csrftoken=${csrftoken}`,
+    `${GU}/?csrftoken=${csrftoken}`,
+    `${GU}/api/sso/login`,
+  ];
+
+  for (const url of ssoUrls) {
+    const method = url.endsWith('/login') ? 'POST' : 'GET';
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'User-Agent': UA,
+        Accept: 'application/json, text/html, */*',
+        Referer: PROC,
+        Origin: PROC,
+        Cookie: allCookies,
+        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(method === 'POST' ? { body: JSON.stringify({ ref: email, password }) } : {}),
+      redirect: 'follow',
+    }).catch(() => null);
+
+    if (!res) continue;
+
+    // Chercher le BEARER dans les cookies Set-Cookie
+    const cookies = parseCookies(getSetCookiesArr(res));
+    if (cookies['BEARER']) return cookies['BEARER'];
+
+    // Ou dans le body JSON
+    if (res.ok) {
+      const json = await res.json().catch(() => null);
+      const token = json?.token ?? json?.access_token ?? json?.bearer ?? json?.jwt ?? json?.data?.token;
+      if (token) return token;
+    }
+  }
+
+  // Étape 4 : si le csrftoken lui-même est utilisable comme bearer
+  // (certaines versions de l'API GU l'acceptent directement)
+  if (csrftoken) {
+    const testRes = await fetch(`${GU}/api/formalities/dashboard-list?page=1&itemsPerPage=1`, {
+      headers: { 'User-Agent': UA, Accept: 'application/json', Cookie: `BEARER=${csrftoken}` },
+    }).catch(() => null);
+    if (testRes?.ok) return csrftoken;
+  }
+
+  throw new Error('Impossible d\'obtenir le BEARER GU. Vérifiez vos identifiants INPI dans ⚙️ Paramètres.');
+}
 
 // ── Route GET /api/inpi-auth ──────────────────────────────────────────────────
-// Récupère le statut INPI de chaque client qui a un inpi_dossier_id
 export async function GET() {
   try {
     const user = await requireUser();
     const sb = await createSupabaseServer();
+    const { data: settings } = await sb.from('settings')
+      .select('inpi_rne_username,inpi_rne_password').eq('user_id', user.id).single();
 
-    // Token RNE
-    let token;
-    try {
-      token = await getInpiToken(user.id);
-    } catch {
+    const email    = (settings?.inpi_rne_username || process.env.INPI_RNE_USERNAME || '').trim();
+    const password = (settings?.inpi_rne_password || process.env.INPI_RNE_PASSWORD || '').trim();
+
+    if (!email || !password) {
       return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
     }
 
-    const headers = { Authorization: `Bearer ${token}` };
-
-    // Récupérer les clients avec un numéro de dossier INPI
-    const { data: clients, error } = await sb
-      .from('clients')
-      .select('id, denomination, type_societe, inpi_dossier_id')
-      .eq('user_id', user.id)
-      .not('inpi_dossier_id', 'is', null)
-      .neq('inpi_dossier_id', '');
-
-    if (error) throw new Error(error.message);
-    if (!clients?.length) {
-      return NextResponse.json({ ok: true, stats: buildStats([]), total: 0, formalites: [] });
+    // Récupérer ou renouveler le BEARER GU
+    let bearer = await getCachedBearer(user.id);
+    if (!bearer) {
+      bearer = await loginAndGetBearer(email, password);
+      await storeBearer(user.id, bearer);
     }
 
-    // Vérifier le statut de chaque dossier en parallèle (max 5 à la fois)
-    const formalites = [];
-    for (let i = 0; i < clients.length; i += 5) {
-      const batch = clients.slice(i, i + 5);
-      const results = await Promise.all(batch.map(async (client) => {
-        try {
-          const res = await fetch(`${RNE}/formalities/${client.inpi_dossier_id}`, { headers });
-          if (!res.ok) return buildFallback(client, res.status === 404 ? 'NOT_FOUND' : 'ERROR');
-          const data = await res.json();
-          return buildItem(client, data);
-        } catch {
-          return buildFallback(client, 'ERROR');
-        }
-      }));
-      formalites.push(...results);
+    // Récupérer les formalités depuis le tableau de bord GU
+    const ALL_STATUSES = [
+      'RECEIVED','PAYMENT_VALIDATION_PENDING','PAID','SIGNATURE_PENDING','PAYMENT_PENDING',
+      'SIGNED','AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED',
+      'AMENDMENT_PAYMENT_PENDING','AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID',
+      'AMENDED','VALIDATION_PENDING','EXPIRED','VALIDATED','REJECTED',
+      'VALIDATED_BO_AMENDMENT_SIGNED','VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING',
+      'COMPLIANCE_INSEE_PENDING','ERROR_DECLARATION_INSEE','ERROR_INSEE_EXISTS_PM','ERROR_VALIDATION',
+    ].map(s => `status%5B%5D=${s}`).join('&');
+
+    let formalites = [];
+    for (let page = 1; page <= 20; page++) {
+      const res = await fetch(
+        `${GU}/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`,
+        { headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Cookie: `BEARER=${bearer}` } }
+      );
+
+      if (res.status === 401) {
+        // Token expiré — invalider le cache et retenter avec un nouveau login
+        try { await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', user.id); } catch {}
+        bearer = await loginAndGetBearer(email, password);
+        await storeBearer(user.id, bearer);
+        // Retenter la même page
+        const res2 = await fetch(
+          `${GU}/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`,
+          { headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Cookie: `BEARER=${bearer}` } }
+        );
+        if (!res2.ok) throw new Error(`GU API ${res2.status}`);
+        const data2 = await res2.json();
+        const items2 = buildList(data2);
+        formalites = formalites.concat(items2);
+        const total2 = data2?.['hydra:totalItems'] ?? data2?.totalItems ?? null;
+        if (total2 !== null && formalites.length >= total2) break;
+        if (items2.length < 50) break;
+        continue;
+      }
+
+      if (!res.ok) throw new Error(`GU API ${res.status}`);
+      const data = await res.json();
+      const items = buildList(data);
+      formalites = formalites.concat(items);
+      const total = data?.['hydra:totalItems'] ?? data?.totalItems ?? null;
+      if (total !== null && formalites.length >= total) break;
+      if (items.length < 50) break;
     }
 
-    return NextResponse.json({
-      ok: true,
-      stats: buildStats(formalites),
-      total: formalites.length,
-      formalites,
-    });
+    return NextResponse.json({ ok: true, stats: buildStats(formalites), total: formalites.length, formalites });
 
   } catch (e) {
-    if (e.message === 'TOKEN_MISSING' || e.message.includes('manquants')) {
-      return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
-    }
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+    const msg = e.message;
+    if (msg === 'TOKEN_MISSING') return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function buildItem(client, data) {
-  const statut = data.status ?? data.statut ?? data.etat ?? null;
-  return {
-    id:           client.inpi_dossier_id,
-    siren:        data.siren ?? data.companyDetails?.siren ?? null,
-    denomination: client.denomination,
-    type:         client.type_societe ?? data.formType ?? data.type ?? null,
-    statut,
-    statut_label: labelStatut(statut),
-    statut_color: colorStatut(statut),
-    date_depot:   data.createdAt ?? data.dateDepot ?? data.created ?? null,
-    date_modif:   data.updatedAt ?? data.dateModification ?? data.updated ?? null,
-    commentaire:  data.commentaire ?? data.motifRejet ?? null,
-  };
+// ── Helpers cookies ───────────────────────────────────────────────────────────
+function getSetCookiesArr(res) {
+  if (typeof res.headers.getSetCookie === 'function') return res.headers.getSetCookie();
+  const raw = res.headers.get('set-cookie');
+  if (!raw) return [];
+  return raw.split(/,(?=\s*\w+=)/);
 }
 
-function buildFallback(client, statut) {
-  return {
-    id:           client.inpi_dossier_id,
-    siren:        null,
-    denomination: client.denomination,
-    type:         client.type_societe,
-    statut,
-    statut_label: statut === 'NOT_FOUND' ? 'Introuvable' : 'Erreur',
-    statut_color: 'slate',
-    date_depot:   null,
-    date_modif:   null,
-    commentaire:  null,
-  };
+function getSetCookiesStr(res) {
+  return getSetCookiesArr(res).map(c => c.split(';')[0]).join('; ');
+}
+
+function parseCookies(arr) {
+  const out = {};
+  for (const c of arr) {
+    const [pair] = c.split(';');
+    const eq = pair.indexOf('=');
+    if (eq < 0) continue;
+    out[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
+  }
+  return out;
+}
+
+// ── Helpers données ───────────────────────────────────────────────────────────
+function buildList(raw) {
+  const items = raw?.['hydra:member'] ?? raw?.member ?? raw?.items ?? raw?.data ?? (Array.isArray(raw) ? raw : []);
+  return items.map(f => ({
+    id:           f.id ?? f['@id'],
+    siren:        f.siren ?? f.companyDetails?.siren ?? f.company?.siren,
+    denomination: f.companyName ?? f.denomination ?? f.raisonSociale ?? f.company?.denomination,
+    type:         f.formType ?? f.type ?? f.formalityType,
+    statut:       f.status ?? f.statut,
+    statut_label: labelStatut(f.status ?? f.statut),
+    statut_color: colorStatut(f.status ?? f.statut),
+    date_depot:   f.createdAt ?? f.dateDepot,
+    date_modif:   f.updatedAt ?? f.dateModification,
+    commentaire:  f.commentaire ?? f.motifRejet ?? null,
+  }));
 }
 
 function buildStats(list) {
@@ -119,7 +249,6 @@ function labelStatut(s) {
     COMPLIANCE_INSEE_PENDING: 'En cours INSEE', ERROR_VALIDATION: 'Erreur validation',
     ERROR_DECLARATION_INSEE: 'Erreur INSEE', ERROR_INSEE_EXISTS_PM: 'SIREN déjà existant',
     VALIDATED_BO_AMENDMENT_SIGNED: 'Validée', VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING: 'Validée',
-    NOT_FOUND: 'Introuvable', ERROR: 'Erreur',
   };
   return map[s] ?? s ?? '—';
 }
