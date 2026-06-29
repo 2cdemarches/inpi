@@ -90,8 +90,10 @@ export async function GET(req) {
   // Étape 3 : Suivre l'URL SSO manuellement
   if (ssoUrl) {
     // Injecter le cookie Incapsula de guichet-unique.inpi.fr si disponible
-    if (s.inpi_incap_cookie) {
-      const incapEntry = `visid_incap_2207353=${s.inpi_incap_cookie}`;
+    const incapVal = s?.inpi_incap_cookie || '';
+    log.push({ step: '2.5_incap_check', incap_cookie_length: incapVal.length, incap_cookie_preview: incapVal.slice(0, 10) || '(vide)' });
+    if (incapVal) {
+      const incapEntry = `visid_incap_2207353=${incapVal}`;
       cookieJar = cookieJar ? `${cookieJar}; ${incapEntry}` : incapEntry;
     }
     let url = ssoUrl;
