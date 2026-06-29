@@ -211,7 +211,7 @@ export async function GET() {
     } catch {
       if (username && password) {
         // Nettoyer les anciens tokens expirés avant de re-login
-        await adminSb().from('tokens').delete().in('key', ['inpi_bearer', 'inpi_refresh']).eq('user_id', user.id).catch(() => {});
+        try { await adminSb().from('tokens').delete().in('key', ['inpi_bearer', 'inpi_refresh']).eq('user_id', user.id); } catch {}
         const logged = await loginToInpi(username, password);
         await storeTokens(user.id, logged.bearer, logged.refresh);
         bearer = logged.bearer;
