@@ -121,25 +121,13 @@ export default function InpiPage() {
 
         {/* États */}
         {loading && !data && <p className="text-center text-slate-400 py-16">Chargement des formalités…</p>}
-        {error === 'TOKEN_EXPIRED' && (
+        {(error === 'TOKEN_EXPIRED' || error === 'TOKEN_MISSING') && (
           <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 text-sm text-amber-800 space-y-3">
-            <p className="font-bold text-base">🔑 Token INPI expiré (valide 2h)</p>
-            <p>Le token JWT INPI dure 2 heures. Pour le renouveler :</p>
-            <ol className="list-decimal list-inside space-y-1 text-amber-700">
-              <li>Ouvrez <a href="https://guichet-unique.inpi.fr" target="_blank" className="underline font-medium">guichet-unique.inpi.fr</a> (vous êtes déjà connecté via Google)</li>
-              <li>F12 → Application → Cookies → <strong>guichet-unique.inpi.fr</strong></li>
-              <li>Copiez la valeur du cookie <strong>BEARER</strong></li>
-              <li>Collez-la dans <strong>⚙️ Paramètres → INPI</strong> et sauvegardez</li>
-            </ol>
+            <p className="font-bold text-base">🔑 Connexion INPI requise</p>
+            <p>Renseignez votre email et mot de passe INPI dans <strong>⚙️ Paramètres → INPI (API RNE)</strong> et sauvegardez.</p>
             <button onClick={load} className="mt-1 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium">
-              Réessayer après mise à jour
+              Réessayer
             </button>
-          </div>
-        )}
-        {error === 'TOKEN_MISSING' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-800 space-y-2">
-            <p className="font-bold">🔑 Token INPI non configuré</p>
-            <p>Allez dans <strong>⚙️ Paramètres → INPI</strong>, collez votre token BEARER depuis guichet-unique.inpi.fr et sauvegardez.</p>
           </div>
         )}
         {error && error !== 'TOKEN_EXPIRED' && error !== 'TOKEN_MISSING' && (

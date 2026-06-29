@@ -194,14 +194,28 @@ export async function GET() {
   try {
     const user = await requireUser();
     const sb = await createSupabaseServer();
-    const { data: settings } = await sb.from('settings').select('inpi_bearer,inpi_refresh_token,inpi_login,inpi_password').eq('user_id', user.id).single();
+    const { data: settings } = await sb.from('settings').select('inpi_bearer,inpi_refresh_token,inpi_rne_username,inpi_rne_password').eq('user_id', user.id).single();
 
     const creds = {
       bearer:   (settings?.inpi_bearer        || process.env.INPI_BEARER        || '').trim() || null,
       refresh:  (settings?.inpi_refresh_token || process.env.INPI_REFRESH_TOKEN || '').trim() || null,
     };
 
-    const bearer = await getBearer(user.id, creds);
+    // Auto-login avec username/password si pas de bearer valide
+    let bearer;
+    try {
+      bearer = await getBearer(user.id, creds);
+    } catch (e) {
+      const username = (settings?.inpi_rne_username || process.env.INPI_RNE_USERNAME || '').trim();
+      const password = (settings?.inpi_rne_password || process.env.INPI_RNE_PASSWORD || '').trim();
+      if (username && password) {
+        const logged = await loginToInpi(username, password);
+        await storeTokens(user.id, logged.bearer, logged.refresh);
+        bearer = logged.bearer;
+      } else {
+        throw e;
+      }
+    }
 
     const ALL_STATUSES = [
       'RECEIVED','PAYMENT_VALIDATION_PENDING','PAID','SIGNATURE_PENDING','PAYMENT_PENDING',

@@ -158,7 +158,7 @@ export default function Dashboard() {
   const [showSaveModele, setShowSaveModele] = useState(false);
   const [nomModele, setNomModele]   = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '', email_cabinet: '', smtp_host: '', smtp_port: 587, smtp_user: '', smtp_pass: '', smtp_from: '', docusign_integration_key: '', docusign_user_id: '', docusign_account_id: '', docusign_private_key: '', docusign_env: 'production', inpi_login: '', inpi_password: '' });
+  const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '', email_cabinet: '', smtp_host: '', smtp_port: 587, smtp_user: '', smtp_pass: '', smtp_from: '', docusign_integration_key: '', docusign_user_id: '', docusign_account_id: '', docusign_private_key: '', docusign_env: 'production', inpi_rne_username: '', inpi_rne_password: '' });
   const [savingSettings, setSavingSettings] = useState(false);
   const [signRequests, setSignRequests]     = useState([]);
 
@@ -584,27 +584,28 @@ export default function Dashboard() {
 
               {/* INPI */}
               <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI (Guichet unique)</h3>
-                {settings.bookmarklet_token ? (
-                  <div className="space-y-3">
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-1">
-                      <p className="font-bold text-sm">🏛️ Extension Chrome — connexion automatique</p>
-                      <p>L'extension se connecte à INPI toutes les 90 min sans aucune action de votre part.</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Votre token personnel <span className="text-slate-400">(à copier dans l'extension)</span></label>
-                      <div className="flex gap-2">
-                        <input readOnly value={settings.bookmarklet_token}
-                          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono bg-slate-50 text-slate-700" />
-                        <button onClick={() => navigator.clipboard.writeText(settings.bookmarklet_token)}
-                          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 whitespace-nowrap">
-                          Copier
-                        </button>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-400">URL de l'app : <span className="font-mono">{typeof window !== 'undefined' ? window.location.origin : ''}</span></p>
-                  </div>
-                ) : <p className="text-xs text-slate-400">Chargement…</p>}
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI (API RNE)</h3>
+                <p className="text-xs text-slate-400">Identifiants de votre compte INPI opendata (<a href="https://www.inpi.fr" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">inpi.fr</a>).</p>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Email INPI</label>
+                  <input
+                    type="email"
+                    value={settings.inpi_rne_username || ''}
+                    onChange={e => setSettings(s => ({ ...s, inpi_rne_username: e.target.value }))}
+                    placeholder="votre@email.fr"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe INPI</label>
+                  <input
+                    type="password"
+                    value={settings.inpi_rne_password || ''}
+                    onChange={e => setSettings(s => ({ ...s, inpi_rne_password: e.target.value }))}
+                    placeholder="••••••••"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
               </div>
 
             </div>
