@@ -588,44 +588,39 @@ export default function Dashboard() {
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI — Guichet Unique</h3>
 
                 {/* Statut renouvellement automatique */}
-                {settings.inpi_refresh_token ? (
+                {settings.inpi_email && settings.inpi_password ? (
                   <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800 flex items-start gap-2">
                     <span className="text-base leading-none">✅</span>
                     <div>
-                      <p className="font-semibold">Renouvellement automatique actif</p>
-                      <p className="text-green-700 mt-0.5">Le token BEARER est rafraîchi automatiquement toutes les heures par le serveur. Aucune action requise.</p>
+                      <p className="font-semibold">Connexion automatique active</p>
+                      <p className="text-green-700 mt-0.5">Le serveur se reconnecte automatiquement à l'INPI toutes les heures. Aucune action requise.</p>
                     </div>
                   </div>
                 ) : (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1">
-                    <p className="font-semibold">Configuration initiale requise (une seule fois)</p>
-                    <ol className="list-decimal list-inside space-y-0.5 text-amber-700">
-                      <li>Connectez-vous sur <a href="https://guichet-unique.inpi.fr" target="_blank" rel="noopener noreferrer" className="underline font-medium">guichet-unique.inpi.fr</a></li>
-                      <li>F12 → Application → Cookies → <strong>guichet-unique.inpi.fr</strong></li>
-                      <li>Copiez <strong>BEARER</strong> et <strong>REFRESH_TOKEN</strong> ci-dessous</li>
-                      <li>Enregistrez — le serveur gère tout ensuite automatiquement</li>
-                    </ol>
+                    <p className="font-semibold">Renseignez vos identifiants INPI ci-dessous</p>
+                    <p className="text-amber-700">Le serveur se connectera automatiquement et renouvellera le token sans aucune intervention de votre part.</p>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">BEARER <span className="text-slate-400 font-normal">(token JWT actuel)</span></label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Email INPI</label>
                   <input
-                    type="password"
-                    value={settings.inpi_bearer || ''}
-                    onChange={e => setSettings(s => ({ ...s, inpi_bearer: e.target.value }))}
-                    placeholder="eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9..."
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    type="email"
+                    value={settings.inpi_email || ''}
+                    onChange={e => setSettings(s => ({ ...s, inpi_email: e.target.value }))}
+                    placeholder="m.celnik@2c-expertise.fr"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">REFRESH_TOKEN <span className="text-slate-400 font-normal">(longue durée — permet le renouvellement automatique)</span></label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe INPI</label>
                   <input
                     type="password"
-                    value={settings.inpi_refresh_token || ''}
-                    onChange={e => setSettings(s => ({ ...s, inpi_refresh_token: e.target.value }))}
-                    placeholder="9d6b7ea67f3ee823..."
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    value={settings.inpi_password || ''}
+                    onChange={e => setSettings(s => ({ ...s, inpi_password: e.target.value }))}
+                    placeholder="••••••••"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
                 </div>
               </div>

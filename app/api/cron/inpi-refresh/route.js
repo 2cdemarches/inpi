@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const GU = 'https://guichet-unique.inpi.fr';
+const GU       = 'https://guichet-unique.inpi.fr';
+const PORTAIL  = 'https://procedures.inpi.fr';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
 function adminSb() {
@@ -16,63 +17,115 @@ function jwtExpiresInMin(token) {
   } catch { return null; }
 }
 
-async function callUserLogged(bearer, refreshToken) {
-  const cookies = [
-    bearer       ? `BEARER=${bearer}`              : '',
-    refreshToken ? `REFRESH_TOKEN=${refreshToken}` : '',
-  ].filter(Boolean).join('; ');
+function parseCookieHeader(arr) {
+  const out = {};
+  for (const c of arr) {
+    const [pair] = c.split(';');
+    const eq = pair.indexOf('=');
+    if (eq > 0) out[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
+  }
+  return out;
+}
 
-  const res = await fetch(`${GU}/api/user/logged`, {
-    method: 'GET',
+function getSetCookies(res) {
+  if (typeof res.headers.getSetCookie === 'function') return res.headers.getSetCookie();
+  const raw = res.headers.get('set-cookie') || '';
+  return raw ? raw.split(/,(?=\s*\w+=)/) : [];
+}
+
+// ── Étape 1 : Login sur procedures.inpi.fr ────────────────────────────────────
+async function loginPortail(email, password) {
+  const res = await fetch(`${PORTAIL}/security/v1/inpiconnect/login`, {
+    method: 'POST',
     headers: {
-      'Accept':          'application/json',
+      'Accept':          'application/json, text/*',
       'Accept-Encoding': 'gzip, deflate, br, zstd',
       'Accept-Language': 'fr-FR,fr;q=0.9',
+      'Content-Type':    'application/json; charset=UTF-8',
       'Connection':      'keep-alive',
-      'FromFO':          '1',
-      'User-Agent':       UA,
+      'Origin':          PORTAIL,
+      'Referer':         `${PORTAIL}/?/login`,
+      'User-Agent':      UA,
+      'x-client-version': '1.27.1-1782135754341',
       'sec-ch-ua':        '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
       'sec-ch-ua-mobile': '?0',
       'sec-fetch-dest':   'empty',
       'sec-fetch-mode':   'cors',
       'sec-fetch-site':   'same-origin',
-      'Cookie':           cookies,
+    },
+    body: JSON.stringify({ username: email, password }),
+  });
+
+  if (!res.ok) throw new Error(`Login portail échoué : ${res.status}`);
+
+  const json = await res.json().catch(() => null);
+  // Le portail retourne un token SSO dans le body (token, ssoToken, jwt, redirect...)
+  const ssoToken = json?.token || json?.ssoToken || json?.jwt || json?.access_token
+    || json?.data?.token || json?.data?.ssoToken || null;
+
+  return { json, ssoToken };
+}
+
+// ── Étape 2 : Échange SSO → BEARER sur guichet-unique.inpi.fr ────────────────
+async function exchangeSsoToken(ssoToken) {
+  const url = `${GU}/login/sso/e-procedure?token=${encodeURIComponent(ssoToken)}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    redirect: 'follow',
+    headers: {
+      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'fr-FR,fr;q=0.9',
+      'Connection':      'keep-alive',
+      'Referer':         `${PORTAIL}/?/login`,
+      'User-Agent':      UA,
+      'sec-fetch-dest':  'document',
+      'sec-fetch-mode':  'navigate',
+      'sec-fetch-site':  'cross-site',
     },
   });
 
-  if (!res.ok) return null;
+  const cookies = parseCookieHeader(getSetCookies(res));
+  const bearer  = cookies['BEARER']        || null;
+  const refresh = cookies['REFRESH_TOKEN'] || null;
 
-  // Nouveau BEARER dans Set-Cookie ?
-  const rawCookies = typeof res.headers.getSetCookie === 'function'
-    ? res.headers.getSetCookie()
-    : (res.headers.get('set-cookie') || '').split(/,(?=\s*\w+=)/);
-
-  const parsed = {};
-  for (const c of rawCookies) {
-    const [pair] = c.split(';');
-    const eq = pair.indexOf('=');
-    if (eq > 0) parsed[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
-  }
-
-  const newBearer  = parsed['BEARER']        || null;
-  const newRefresh = parsed['REFRESH_TOKEN'] || null;
-
-  // INPI retourne "deleted" quand il détecte un appel serveur — ignorer
-  if (newBearer === 'deleted') return null;
-  if (newBearer) return { bearer: newBearer, refresh: newRefresh || refreshToken };
-
-  // Parfois le token est dans le body JSON
-  const json = await res.json().catch(() => null);
-  const bodyToken = json?.token || json?.bearer || json?.accessToken || null;
-  if (bodyToken && bodyToken !== 'deleted') {
-    return { bearer: bodyToken, refresh: json?.refreshToken || refreshToken };
-  }
-
-  return null;
+  if (!bearer || bearer === 'deleted') return null;
+  return { bearer, refresh };
 }
 
+// ── Login complet (portail → guichet) ────────────────────────────────────────
+async function fullLogin(email, password) {
+  const { json, ssoToken } = await loginPortail(email, password);
+  if (!ssoToken) {
+    // Essayer les clés alternatives connues
+    const alt = json ? Object.values(json).find(v => typeof v === 'string' && v.length > 20) : null;
+    if (!alt) throw new Error(`Token SSO introuvable dans la réponse : ${JSON.stringify(json)}`);
+    return await exchangeSsoToken(alt);
+  }
+  return await exchangeSsoToken(ssoToken);
+}
+
+// ── Stocker les tokens en DB ──────────────────────────────────────────────────
+async function storeTokens(sb, userId, bearer, refresh) {
+  const expMin   = jwtExpiresInMin(bearer);
+  const expiresAt = expMin ? new Date(Date.now() + expMin * 60 * 1000).toISOString() : null;
+
+  await sb.from('settings').update({
+    inpi_bearer:        bearer,
+    inpi_refresh_token: refresh || null,
+    updated_at:         new Date().toISOString(),
+  }).eq('user_id', userId);
+
+  await sb.from('tokens').upsert({
+    key: 'inpi_bearer', user_id: userId,
+    value: bearer, expires_at: expiresAt,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'key,user_id' });
+
+  return expMin;
+}
+
+// ── Route GET /api/cron/inpi-refresh ─────────────────────────────────────────
 export async function GET(req) {
-  // Vérifier le secret cron
   const secret = req.headers.get('x-cron-secret') || new URL(req.url).searchParams.get('secret');
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -81,56 +134,36 @@ export async function GET(req) {
   const sb = adminSb();
   const results = [];
 
-  // Récupérer tous les utilisateurs avec un REFRESH_TOKEN stocké
+  // Récupérer tous les utilisateurs avec email INPI configuré
   const { data: allSettings } = await sb
     .from('settings')
-    .select('user_id, inpi_bearer, inpi_refresh_token')
-    .not('inpi_refresh_token', 'is', null);
+    .select('user_id, inpi_bearer, inpi_refresh_token, inpi_email, inpi_password');
 
   if (!allSettings?.length) {
-    return NextResponse.json({ ok: true, message: 'Aucun token à rafraîchir', refreshed: 0 });
+    return NextResponse.json({ ok: true, message: 'Aucun compte INPI configuré', refreshed: 0 });
   }
 
   for (const s of allSettings) {
-    const { user_id, inpi_bearer, inpi_refresh_token } = s;
-    if (!inpi_refresh_token) continue;
+    const { user_id, inpi_bearer, inpi_refresh_token, inpi_email, inpi_password } = s;
+    if (!inpi_email || !inpi_password) continue;
 
     const expiresIn = inpi_bearer ? jwtExpiresInMin(inpi_bearer) : null;
 
-    // Rafraîchir seulement si expiré ou expire dans < 30 min
+    // Ne pas rafraîchir si valide encore > 30 min
     if (expiresIn !== null && expiresIn > 30) {
       results.push({ user_id, status: 'skipped', expiresIn });
       continue;
     }
 
     try {
-      const renewed = await callUserLogged(inpi_bearer, inpi_refresh_token);
-      if (!renewed) {
-        results.push({ user_id, status: 'failed', reason: 'no_new_bearer' });
+      const tokens = await fullLogin(inpi_email, inpi_password);
+      if (!tokens) {
+        results.push({ user_id, status: 'failed', reason: 'login_no_bearer' });
         continue;
       }
 
-      // Décoder expiration du nouveau JWT
-      const newExpMin = jwtExpiresInMin(renewed.bearer);
-      const expiresAt = newExpMin
-        ? new Date(Date.now() + newExpMin * 60 * 1000).toISOString()
-        : null;
-
-      await sb.from('settings').update({
-        inpi_bearer:        renewed.bearer,
-        inpi_refresh_token: renewed.refresh || inpi_refresh_token,
-        updated_at:         new Date().toISOString(),
-      }).eq('user_id', user_id);
-
-      await sb.from('tokens').upsert({
-        key:        'inpi_bearer',
-        user_id,
-        value:      renewed.bearer,
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'key,user_id' });
-
-      results.push({ user_id, status: 'refreshed', expiresIn: newExpMin });
+      const expMin = await storeTokens(sb, user_id, tokens.bearer, tokens.refresh || inpi_refresh_token);
+      results.push({ user_id, status: 'refreshed', expiresIn: expMin });
     } catch (e) {
       results.push({ user_id, status: 'error', error: e.message });
     }
