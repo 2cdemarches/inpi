@@ -94,7 +94,6 @@ export async function GET(req) {
     redirect: 'manual',
     headers: {
       'Accept': 'application/json',
-      'Content-Type': 'application/json',
       'User-Agent': UA,
       'Referer': `${GU}/`,
       'Origin': GU,
