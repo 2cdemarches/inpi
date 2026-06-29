@@ -8,7 +8,8 @@
     "alarms",
     "storage",
     "notifications",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
     "https://guichet-unique.inpi.fr/*",

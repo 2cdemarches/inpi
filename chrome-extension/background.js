@@ -3,7 +3,7 @@ const INPI_URL       = 'https://guichet-unique.inpi.fr';
 const INPI_LOGIN_URL = 'https://guichet-unique.inpi.fr/guichet/login';
 const COOKIE_NAME    = 'BEARER';
 const ALARM_NAME     = 'sync-inpi';
-const INTERVAL_MIN   = 20; // vérifier toutes les 20 min pour détecter l'expiration tôt
+const INTERVAL_MIN   = 20;
 
 // ── Initialisation ────────────────────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
@@ -16,55 +16,43 @@ chrome.runtime.onStartup.addListener(() => {
   syncToken();
 });
 
-// ── Déclenchement de l'alarme ─────────────────────────────────────────────────
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM_NAME) syncToken();
 });
 
 // ── Sync principale ───────────────────────────────────────────────────────────
-let lastNotifTime = 0; // éviter de spammer les notifications
-
 async function syncToken() {
   const { app_url, user_token } = await chrome.storage.sync.get(['app_url', 'user_token']);
+  if (!app_url || !user_token) { setBadge('?', '#94a3b8'); return; }
 
-  if (!app_url || !user_token) {
-    setBadge('?', '#94a3b8');
-    return;
-  }
-
-  // Lire le cookie BEARER sur guichet-unique.inpi.fr
   const cookie = await chrome.cookies.get({ url: INPI_URL, name: COOKIE_NAME });
 
   if (!cookie?.value) {
     setBadge('!', '#ef4444');
-    await saveStatus({ ok: false, error: 'Session INPI expirée — reconnexion requise' });
-    notifyReconnexion();
+    await saveStatus({ ok: false, error: 'Session expirée — reconnexion automatique…' });
+    await autoLogin();
     return;
   }
 
-  // Envoyer à l'app
   try {
-    const res = await fetch(`${app_url}/api/inpi-token`, {
-      method:  'POST',
+    const res  = await fetch(`${app_url}/api/inpi-token`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ bearer: cookie.value, user_token }),
+      body: JSON.stringify({ bearer: cookie.value, user_token }),
     });
     const json = await res.json();
 
     if (json.ok) {
       setBadge('✓', '#22c55e');
       await saveStatus({ ok: true, expiresInMin: json.expiresInMin, syncedAt: new Date().toISOString() });
-
-      // Avertir 15 min avant l'expiration
-      if (json.expiresInMin !== undefined && json.expiresInMin <= 15) {
-        notifyExpireBientot(json.expiresInMin);
+      // Reconnecter automatiquement 10 min avant l'expiration
+      if (json.expiresInMin !== undefined && json.expiresInMin <= 10) {
+        await autoLogin();
       }
     } else {
       setBadge('!', '#f59e0b');
       await saveStatus({ ok: false, error: json.error });
-      if (json.error?.includes('expiré') || json.error?.includes('invalide')) {
-        notifyReconnexion();
-      }
+      await autoLogin();
     }
   } catch (e) {
     setBadge('!', '#ef4444');
@@ -72,65 +60,152 @@ async function syncToken() {
   }
 }
 
-// ── Notification : session expirée ───────────────────────────────────────────
-function notifyReconnexion() {
-  const now = Date.now();
-  if (now - lastNotifTime < 30 * 60 * 1000) return; // max 1 notif / 30 min
-  lastNotifTime = now;
+// ── Connexion automatique INPI ────────────────────────────────────────────────
+let loginInProgress = false;
 
-  chrome.notifications.create('inpi-expired', {
-    type:     'basic',
-    iconUrl:  'icons/icon48.png',
-    title:    '⚠️ Session INPI expirée',
-    message:  'Votre session INPI a expiré. Cliquez pour vous reconnecter.',
-    buttons:  [{ title: 'Se reconnecter →' }],
-    priority: 2,
-  });
+async function autoLogin() {
+  if (loginInProgress) return;
+
+  const { inpi_login, inpi_password } = await chrome.storage.sync.get(['inpi_login', 'inpi_password']);
+  if (!inpi_login || !inpi_password) {
+    await saveStatus({ ok: false, error: 'Session expirée — renseignez vos identifiants INPI dans l\'extension' });
+    setBadge('!', '#ef4444');
+    return;
+  }
+
+  loginInProgress = true;
+  setBadge('…', '#f59e0b');
+  await saveStatus({ ok: false, error: 'Reconnexion INPI en cours…' });
+
+  try {
+    // Ouvrir un onglet invisible pour se connecter
+    const tab = await chrome.tabs.create({ url: INPI_LOGIN_URL, active: false });
+
+    // Attendre que la page soit chargée
+    await waitForTabLoad(tab.id);
+    await sleep(1500);
+
+    // Injecter le script de connexion
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: injectLogin,
+      args: [inpi_login, inpi_password],
+    });
+
+    const result = results?.[0]?.result;
+
+    if (result?.ok) {
+      // Attendre que le cookie apparaisse (login en cours)
+      await sleep(3000);
+      const cookie = await chrome.cookies.get({ url: INPI_URL, name: COOKIE_NAME });
+      if (cookie?.value) {
+        chrome.tabs.remove(tab.id);
+        loginInProgress = false;
+        // Re-syncer avec le nouveau token
+        await syncToken();
+        return;
+      }
+      // Attendre encore un peu (certains sites sont lents)
+      await sleep(3000);
+      const cookie2 = await chrome.cookies.get({ url: INPI_URL, name: COOKIE_NAME });
+      chrome.tabs.remove(tab.id).catch(() => {});
+      loginInProgress = false;
+      if (cookie2?.value) {
+        await syncToken();
+      } else {
+        setBadge('!', '#ef4444');
+        await saveStatus({ ok: false, error: 'Reconnexion échouée — vérifiez vos identifiants INPI' });
+      }
+    } else {
+      chrome.tabs.remove(tab.id).catch(() => {});
+      loginInProgress = false;
+      setBadge('!', '#ef4444');
+      await saveStatus({ ok: false, error: result?.error || 'Formulaire INPI introuvable' });
+    }
+  } catch (e) {
+    loginInProgress = false;
+    setBadge('!', '#ef4444');
+    await saveStatus({ ok: false, error: 'Erreur reconnexion : ' + e.message });
+  }
 }
 
-// ── Notification : expire bientôt ────────────────────────────────────────────
-function notifyExpireBientot(min) {
-  const now = Date.now();
-  if (now - lastNotifTime < 15 * 60 * 1000) return;
-  lastNotifTime = now;
+// ── Script injecté dans l'onglet INPI ────────────────────────────────────────
+function injectLogin(login, password) {
+  try {
+    // Chercher les champs email/password par différents sélecteurs
+    const emailField = document.querySelector(
+      'input[type="email"], input[name="username"], input[name="email"], input[id*="email"], input[id*="login"], input[placeholder*="mail"]'
+    );
+    const passField = document.querySelector(
+      'input[type="password"]'
+    );
+    const submitBtn = document.querySelector(
+      'button[type="submit"], input[type="submit"], button.btn-primary, button[class*="submit"], button[class*="login"]'
+    );
 
-  chrome.notifications.create('inpi-soon', {
-    type:    'basic',
-    iconUrl: 'icons/icon48.png',
-    title:   '⏰ Session INPI bientôt expirée',
-    message: `Votre session INPI expire dans ${min} minute${min > 1 ? 's' : ''}. Cliquez pour la renouveler.`,
-    buttons: [{ title: 'Renouveler →' }],
-    priority: 1,
-  });
+    if (!emailField || !passField) {
+      return { ok: false, error: 'Champs introuvables (' + document.title + ')' };
+    }
+
+    // Remplir les champs (compatible React/Vue)
+    function fillInput(el, value) {
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+      if (nativeSetter) nativeSetter.set.call(el, value);
+      el.value = value;
+      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('blur',   { bubbles: true }));
+    }
+
+    fillInput(emailField, login);
+    fillInput(passField,  password);
+
+    // Soumettre
+    if (submitBtn) {
+      setTimeout(() => submitBtn.click(), 300);
+    } else {
+      // Fallback : soumettre le formulaire directement
+      const form = passField.closest('form');
+      if (form) setTimeout(() => form.submit(), 300);
+      else return { ok: false, error: 'Bouton de connexion introuvable' };
+    }
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
-// ── Clic sur notification → ouvrir INPI ──────────────────────────────────────
-chrome.notifications.onButtonClicked.addListener((notifId, btnIdx) => {
-  if ((notifId === 'inpi-expired' || notifId === 'inpi-soon') && btnIdx === 0) {
-    chrome.tabs.create({ url: INPI_LOGIN_URL });
-    chrome.notifications.clear(notifId);
-  }
-});
-
-chrome.notifications.onClicked.addListener(notifId => {
-  if (notifId === 'inpi-expired' || notifId === 'inpi-soon') {
-    chrome.tabs.create({ url: INPI_LOGIN_URL });
-    chrome.notifications.clear(notifId);
-  }
-});
-
-// ── Détection auto reconnexion : quand l'utilisateur visite INPI ──────────────
-// Si le cookie réapparaît après une déconnexion, re-syncer immédiatement
+// ── Détection reconnexion réussie ────────────────────────────────────────────
+// Si le cookie apparaît (connexion manuelle ou auto), re-syncer immédiatement
 chrome.cookies.onChanged.addListener(change => {
   if (
     change.cookie.domain?.includes('guichet-unique.inpi.fr') &&
     change.cookie.name === COOKIE_NAME &&
-    !change.removed
+    !change.removed &&
+    !loginInProgress
   ) {
-    // Nouveau token détecté → syncer sans attendre l'alarme
-    setTimeout(syncToken, 2000);
+    setTimeout(syncToken, 1000);
   }
 });
+
+// ── Utilitaires ───────────────────────────────────────────────────────────────
+function waitForTabLoad(tabId) {
+  return new Promise(resolve => {
+    chrome.tabs.onUpdated.addListener(function listener(id, info) {
+      if (id === tabId && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    });
+    // Timeout 10s
+    setTimeout(resolve, 10000);
+  });
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
 
 function setBadge(text, color) {
   chrome.action.setBadgeText({ text });
@@ -150,6 +225,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.action === 'open-inpi') {
     chrome.tabs.create({ url: INPI_LOGIN_URL });
     sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.action === 'test-login') {
+    autoLogin().then(() => sendResponse({ ok: true }));
     return true;
   }
 });
