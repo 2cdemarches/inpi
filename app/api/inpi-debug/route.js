@@ -89,17 +89,20 @@ export async function GET(req) {
 
   // Étape 3b : Tester le refresh token directement (sans SSO)
   const refreshToken = s?.inpi_refresh_token || '';
+  // Tenter le refresh sans BEARER (uniquement REFRESH_TOKEN) + body JSON
   const r3b = await fetch(`${GU}/api/token/refresh`, {
     method: 'POST',
     redirect: 'manual',
     headers: {
       'Accept': 'application/json',
+      'Content-Type': 'application/json',
       'User-Agent': UA,
       'Referer': `${GU}/`,
       'Origin': GU,
       'FromFO': '1',
       'Cookie': `REFRESH_TOKEN=${refreshToken}`,
     },
+    body: JSON.stringify({ refresh_token: refreshToken }),
   });
   const cx3b = parseCookieHeader(getSetCookies(r3b));
   const body3b = await r3b.text().catch(() => null);
@@ -108,7 +111,8 @@ export async function GET(req) {
     status: r3b.status,
     set_cookies: Object.keys(cx3b),
     has_bearer: !!cx3b['BEARER'],
-    body_preview: body3b?.slice(0, 200),
+    body_preview: body3b?.slice(0, 300),
+    refresh_token_length: refreshToken.length,
   });
 
   // Étape 3 : Suivre l'URL SSO manuellement
