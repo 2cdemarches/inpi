@@ -19,12 +19,19 @@ async function getCachedBearer(userId) {
   return data.value;
 }
 
-async function storeBearer(userId, bearer, ttlMs = 90 * 60 * 1000) {
+async function storeBearer(userId, bearer, refresh = null, ttlMs = 90 * 60 * 1000) {
   const expiresAt = new Date(Date.now() + ttlMs).toISOString();
-  await adminSb().from('tokens').upsert(
+  const sb = adminSb();
+  await sb.from('tokens').upsert(
     { key: 'inpi_bearer', user_id: userId, value: bearer, expires_at: expiresAt, updated_at: new Date().toISOString() },
     { onConflict: 'key,user_id' }
   );
+  if (refresh) {
+    await sb.from('tokens').upsert(
+      { key: 'inpi_refresh', user_id: userId, value: refresh, expires_at: null, updated_at: new Date().toISOString() },
+      { onConflict: 'key,user_id' }
+    );
+  }
 }
 
 // ── Login INPI + échange SSO pour obtenir le BEARER GU ───────────────────────
@@ -57,55 +64,40 @@ async function loginAndGetBearer(email, password) {
   }
 
   const loginJson = await loginRes.json().catch(() => ({}));
-  const csrftoken = loginJson?.data?.csrftoken;
   const loginCookies = getSetCookiesStr(loginRes);
+  // Combiner toutes les cookies de session (PHPSESSID + incapsula partagés sur *.inpi.fr)
   const allCookies = [sessionCookies, loginCookies].filter(Boolean).join('; ');
 
-  // Étape 3 : échange du csrftoken contre un BEARER GU via le endpoint SSO
-  // Essayer plusieurs patterns de callback SSO
-  const ssoUrls = [
-    `${GU}/sso/callback?csrftoken=${csrftoken}`,
-    `${GU}/?csrftoken=${csrftoken}`,
-    `${GU}/api/sso/login`,
-  ];
+  // Étape 3 : appeler GET /api/user/logged sur le GU avec les cookies de session
+  // Le GU partage les cookies de session avec procedures.inpi.fr via le domaine .inpi.fr
+  const loggedRes = await fetch(`${GU}/api/user/logged`, {
+    headers: {
+      'User-Agent': UA,
+      Accept: 'application/json',
+      Referer: `${PROC}/?home`,
+      Cookie: allCookies,
+    },
+    redirect: 'follow',
+  }).catch(e => { throw new Error(`Connexion GU impossible : ${e.message}`); });
 
-  for (const url of ssoUrls) {
-    const method = url.endsWith('/login') ? 'POST' : 'GET';
-    const res = await fetch(url, {
-      method,
-      headers: {
-        'User-Agent': UA,
-        Accept: 'application/json, text/html, */*',
-        Referer: PROC,
-        Origin: PROC,
-        Cookie: allCookies,
-        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
-      },
-      ...(method === 'POST' ? { body: JSON.stringify({ ref: email, password }) } : {}),
+  const loggedCookies = parseCookies(getSetCookiesArr(loggedRes));
+  if (loggedCookies['BEARER']) return { bearer: loggedCookies['BEARER'], refresh: loggedCookies['REFRESH_TOKEN'] ?? null };
+
+  // Étape 4 : essayer aussi avec csrftoken explicite en query param
+  const csrftoken = loginJson?.data?.csrftoken;
+  if (csrftoken) {
+    const res2 = await fetch(`${GU}/api/user/logged?csrftoken=${csrftoken}`, {
+      headers: { 'User-Agent': UA, Accept: 'application/json', Referer: `${PROC}/?home`, Cookie: allCookies },
       redirect: 'follow',
     }).catch(() => null);
-
-    if (!res) continue;
-
-    // Chercher le BEARER dans les cookies Set-Cookie
-    const cookies = parseCookies(getSetCookiesArr(res));
-    if (cookies['BEARER']) return cookies['BEARER'];
-
-    // Ou dans le body JSON
-    if (res.ok) {
-      const json = await res.json().catch(() => null);
-      const token = json?.token ?? json?.access_token ?? json?.bearer ?? json?.jwt ?? json?.data?.token;
-      if (token) return token;
+    if (res2) {
+      const c2 = parseCookies(getSetCookiesArr(res2));
+      if (c2['BEARER']) return { bearer: c2['BEARER'], refresh: c2['REFRESH_TOKEN'] ?? null };
+      // Parfois le token est dans le body
+      const j2 = await res2.json().catch(() => null);
+      const t2 = j2?.token ?? j2?.bearer ?? j2?.data?.token ?? j2?.data?.bearer;
+      if (t2) return { bearer: t2, refresh: j2?.refresh_token ?? null };
     }
-  }
-
-  // Étape 4 : si le csrftoken lui-même est utilisable comme bearer
-  // (certaines versions de l'API GU l'acceptent directement)
-  if (csrftoken) {
-    const testRes = await fetch(`${GU}/api/formalities/dashboard-list?page=1&itemsPerPage=1`, {
-      headers: { 'User-Agent': UA, Accept: 'application/json', Cookie: `BEARER=${csrftoken}` },
-    }).catch(() => null);
-    if (testRes?.ok) return csrftoken;
   }
 
   throw new Error('Impossible d\'obtenir le BEARER GU. Vérifiez vos identifiants INPI dans ⚙️ Paramètres.');
@@ -129,8 +121,9 @@ export async function GET() {
     // Récupérer ou renouveler le BEARER GU
     let bearer = await getCachedBearer(user.id);
     if (!bearer) {
-      bearer = await loginAndGetBearer(email, password);
-      await storeBearer(user.id, bearer);
+      const result = await loginAndGetBearer(email, password);
+      bearer = result.bearer;
+      await storeBearer(user.id, bearer, result.refresh);
     }
 
     // Récupérer les formalités depuis le tableau de bord GU
@@ -153,8 +146,9 @@ export async function GET() {
       if (res.status === 401) {
         // Token expiré — invalider le cache et retenter avec un nouveau login
         try { await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', user.id); } catch {}
-        bearer = await loginAndGetBearer(email, password);
-        await storeBearer(user.id, bearer);
+        const r2 = await loginAndGetBearer(email, password);
+        bearer = r2.bearer;
+        await storeBearer(user.id, bearer, r2.refresh);
         // Retenter la même page
         const res2 = await fetch(
           `${GU}/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`,
