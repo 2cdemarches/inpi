@@ -621,6 +621,21 @@ export default function Dashboard() {
                     </ol>
                   </div>
                   <BookmarkletButton token={settings.bookmarklet_token} />
+                  {/* USER_TOKEN pour le bot Playwright */}
+                  <div className="mt-3 space-y-1">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">USER_TOKEN (bot automatique)</p>
+                    <p className="text-xs text-slate-400">À copier dans <code className="bg-slate-100 px-1 rounded">.env.bot</code> pour le bot Playwright :</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 bg-slate-100 text-slate-700 text-xs font-mono px-3 py-2 rounded-lg break-all select-all">
+                        {settings.bookmarklet_token}
+                      </code>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(settings.bookmarklet_token); }}
+                        className="shrink-0 px-2 py-2 text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg"
+                        title="Copier"
+                      >📋</button>
+                    </div>
+                  </div>
                 </div>
               )}
 
