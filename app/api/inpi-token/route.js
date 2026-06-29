@@ -38,7 +38,7 @@ export async function POST(req) {
   const hdrs   = corsHeaders(origin);
 
   try {
-    const { bearer, user_token } = await req.json();
+    const { bearer, refresh_token, user_token } = await req.json();
     if (!bearer) return NextResponse.json({ ok: false, error: 'bearer manquant' }, { status: 400, headers: hdrs });
     if (!user_token) return NextResponse.json({ ok: false, error: 'user_token manquant' }, { status: 400, headers: hdrs });
 
@@ -61,7 +61,9 @@ export async function POST(req) {
 
     // Sauvegarder le bearer dans settings + dans le cache tokens
     const expiresAt = exp ? new Date(exp).toISOString() : null;
-    await sb.from('settings').update({ inpi_bearer: bearer, updated_at: new Date().toISOString() }).eq('user_id', userId);
+    const settingsUpdate = { inpi_bearer: bearer, updated_at: new Date().toISOString() };
+    if (refresh_token) settingsUpdate.inpi_refresh_token = refresh_token;
+    await sb.from('settings').update(settingsUpdate).eq('user_id', userId);
     await sb.from('tokens').upsert({
       key: 'inpi_bearer', user_id: userId, value: bearer,
       expires_at: expiresAt, updated_at: new Date().toISOString(),

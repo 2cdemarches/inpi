@@ -605,9 +605,24 @@ export default function Dashboard() {
                   />
                 </div>
                 {settings.inpi_refresh_token && (
-                  <p className="text-xs text-green-600">✓ Token configuré — renouvellement automatique toutes les 2h</p>
+                  <p className="text-xs text-green-600">✓ Token configuré</p>
                 )}
               </div>
+
+              {/* Bookmarklet renouvellement */}
+              {settings.bookmarklet_token && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Renouvellement automatique</h3>
+                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-800 space-y-2">
+                    <p className="font-medium">Quand le token expire (toutes les ~2h) :</p>
+                    <ol className="list-decimal list-inside space-y-1 text-indigo-700">
+                      <li>Ouvrez <a href="https://guichet-unique.inpi.fr" target="_blank" className="underline font-medium">guichet-unique.inpi.fr</a></li>
+                      <li>Cliquez sur le favori ci-dessous</li>
+                    </ol>
+                  </div>
+                  <BookmarkletButton token={settings.bookmarklet_token} />
+                </div>
+              )}
 
             </div>
 
@@ -987,6 +1002,44 @@ function SendSignatureButton({ client }) {
   );
 }
 
+
+
+function BookmarkletButton({ token }) {
+  const APP_URL = 'https://inpi-ten.vercel.app';
+  // Le bookmarklet lit BEARER + REFRESH_TOKEN depuis les cookies de guichet-unique.inpi.fr
+  // et les envoie à notre API
+  const code = `(function(){
+    function getCookie(n){return(document.cookie.split(';').find(c=>c.trim().startsWith(n+'='))||'').split('=').slice(1).join('=').trim();}
+    var b=getCookie('BEARER'),r=getCookie('REFRESH_TOKEN');
+    if(!b){alert('Cookie BEARER introuvable. Assurez-vous d\\'etre connecte sur guichet-unique.inpi.fr');return;}
+    fetch('${APP_URL}/api/inpi-token',{
+      method:'POST',credentials:'omit',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({bearer:b,refresh_token:r,user_token:'${token}'})
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.ok)alert('Token INPI mis a jour ! Valide encore '+d.expiresInMin+' minutes.');
+      else alert('Erreur : '+d.error);
+    }).catch(function(e){alert('Erreur reseau : '+e.message);});
+  })();`;
+  const href = 'javascript:' + code;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-slate-500">Glissez ce bouton dans vos favoris du navigateur :</p>
+      <a href={href}
+        onClick={e => e.preventDefault()}
+        draggable
+        className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl cursor-grab active:cursor-grabbing select-none"
+        title="Glissez ce lien dans votre barre de favoris">
+        🔖 Renouveler le token INPI
+      </a>
+      <p className="text-xs text-slate-400">
+        Ensuite, chaque fois que le token expire : ouvrez{' '}
+        <a href="https://guichet-unique.inpi.fr" target="_blank" className="underline">guichet-unique.inpi.fr</a>
+        {' '}et cliquez sur ce favori.
+      </p>
+    </div>
+  );
+}
 
 function SendSuiviButton({ client, onSync }) {
   const [open, setOpen]     = useState(false);
