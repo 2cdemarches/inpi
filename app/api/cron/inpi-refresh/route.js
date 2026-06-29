@@ -125,7 +125,7 @@ async function getSsoUrl(allCookies) {
 // ── Étape 3 : Échanger l'URL SSO → BEARER + REFRESH_TOKEN ────────────────────
 // Le BEARER est posé dans le Set-Cookie d'une réponse 302 intermédiaire.
 // redirect:'manual' permet de capturer les cookies avant la redirection.
-async function exchangeSsoUrl(ssoUrl) {
+async function exchangeSsoUrl(ssoUrl, incapCookie = '') {
   const commonHeaders = {
     'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'fr-FR,fr;q=0.9',
@@ -136,11 +136,11 @@ async function exchangeSsoUrl(ssoUrl) {
     'sec-fetch-site':  'cross-site',
     'Referer':         `${PORTAIL}/?/home`,
   };
-
-  let bearer  = null;
-  let refresh = null;
-  let url     = ssoUrl;
-  let cookieJar = '';
+  let bearer    = null;
+  let refresh   = null;
+  let url       = ssoUrl;
+  // Cookie Incapsula (visid_incap_2207353) requis pour bypasser le WAF de guichet-unique.inpi.fr
+  let cookieJar = incapCookie ? `visid_incap_2207353=${incapCookie}` : '';
 
   // Suivre manuellement les redirects pour capter les Set-Cookie à chaque étape
   for (let i = 0; i < 10; i++) {
@@ -176,11 +176,11 @@ async function exchangeSsoUrl(ssoUrl) {
 }
 
 // ── Login complet en 4 étapes ─────────────────────────────────────────────────
-async function fullLogin(email, password) {
-  const wafCookies            = await getWafCookies();
-  const { allCookies }        = await loginPortail(email, password, wafCookies);
-  const ssoUrl                = await getSsoUrl(allCookies);
-  return await exchangeSsoUrl(ssoUrl);
+async function fullLogin(email, password, incapCookie = '') {
+  const wafCookies     = await getWafCookies();
+  const { allCookies } = await loginPortail(email, password, wafCookies);
+  const ssoUrl         = await getSsoUrl(allCookies);
+  return await exchangeSsoUrl(ssoUrl, incapCookie);
 }
 
 // ── Stocker les tokens en DB ──────────────────────────────────────────────────
@@ -216,14 +216,14 @@ export async function GET(req) {
   // Récupérer tous les utilisateurs avec email INPI configuré
   const { data: allSettings } = await sb
     .from('settings')
-    .select('user_id, inpi_bearer, inpi_refresh_token, inpi_email, inpi_password');
+    .select('user_id, inpi_bearer, inpi_refresh_token, inpi_email, inpi_password, inpi_incap_cookie');
 
   if (!allSettings?.length) {
     return NextResponse.json({ ok: true, message: 'Aucun compte INPI configuré', refreshed: 0 });
   }
 
   for (const s of allSettings) {
-    const { user_id, inpi_bearer, inpi_refresh_token, inpi_email, inpi_password } = s;
+    const { user_id, inpi_bearer, inpi_refresh_token, inpi_email, inpi_password, inpi_incap_cookie } = s;
     if (!inpi_email || !inpi_password) continue;
 
     const expiresIn = inpi_bearer ? jwtExpiresInMin(inpi_bearer) : null;
@@ -235,7 +235,7 @@ export async function GET(req) {
     }
 
     try {
-      const tokens = await fullLogin(inpi_email, inpi_password);
+      const tokens = await fullLogin(inpi_email, inpi_password, inpi_incap_cookie || '');
       if (!tokens) {
         results.push({ user_id, status: 'failed', reason: 'login_no_bearer' });
         continue;

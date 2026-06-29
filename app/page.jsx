@@ -623,6 +623,19 @@ export default function Dashboard() {
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Cookie anti-bot <span className="text-slate-400 font-normal">(une fois par an)</span>
+                  </label>
+                  <p className="text-xs text-slate-400 mb-1">F12 → Application → Cookies → guichet-unique.inpi.fr → <strong>visid_incap_2207353</strong></p>
+                  <input
+                    type="password"
+                    value={settings.inpi_incap_cookie || ''}
+                    onChange={e => setSettings(s => ({ ...s, inpi_incap_cookie: e.target.value }))}
+                    placeholder="naWkijypR1CVhmTax3LrKI..."
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
               </div>
 
             </div>

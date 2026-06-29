@@ -32,6 +32,27 @@ export async function OPTIONS(req) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(req.headers.get('origin') || '') });
 }
 
+// GET /api/inpi-token?user_token=XXX — retourne les tokens actuels (pour le bot Playwright)
+export async function GET(req) {
+  const { searchParams } = new URL(req.url);
+  const user_token = searchParams.get('user_token');
+  if (!user_token) return NextResponse.json({ ok: false, error: 'user_token manquant' }, { status: 400 });
+
+  const sb = adminSb();
+  const { data: settings } = await sb.from('settings')
+    .select('inpi_bearer, inpi_refresh_token')
+    .eq('bookmarklet_token', user_token)
+    .single();
+
+  if (!settings) return NextResponse.json({ ok: false, error: 'Token utilisateur invalide' }, { status: 401 });
+
+  return NextResponse.json({
+    ok: true,
+    bearer: settings.inpi_bearer || null,
+    refresh_token: settings.inpi_refresh_token || null,
+  });
+}
+
 // POST /api/inpi-token  { bearer, user_token }
 export async function POST(req) {
   const origin = req.headers.get('origin') || '';
