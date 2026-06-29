@@ -75,12 +75,15 @@ async function loginToInpi(email, password) {
   }
 
   const json = JSON.parse(txt || '{}');
-  const bearer = json.token ?? json.access_token ?? json.bearer ?? json.jwt;
-  if (bearer) return { bearer, refresh: json.refresh_token ?? null };
+  const bearer =
+    json.token ?? json.access_token ?? json.bearer ?? json.jwt ??
+    json.data?.csrftoken ?? json.data?.token ?? json.data?.access_token;
+  if (bearer) return { bearer, refresh: json.refresh_token ?? json.data?.refresh_token ?? null };
 
   // Le token peut aussi arriver dans les cookies Set-Cookie de la réponse login
   const allCookies = parseCookies([...getSetCookies(res), ...(sessionCookies ? [sessionCookies] : [])]);
   if (allCookies['BEARER']) return { bearer: allCookies['BEARER'], refresh: allCookies['REFRESH_TOKEN'] ?? null };
+  if (allCookies['CSRFTOKEN']) return { bearer: allCookies['CSRFTOKEN'], refresh: null };
 
   throw new Error('Connexion INPI : token non trouvé dans la réponse : ' + txt.slice(0, 200));
 }
