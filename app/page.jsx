@@ -987,13 +987,12 @@ function SendSignatureButton({ client }) {
   );
 }
 
+
 function SendSuiviButton({ client, onSync }) {
   const [open, setOpen]     = useState(false);
   const [email, setEmail]   = useState(client.email || '');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
-
-  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://inpi-ten.vercel.app';
 
   async function send() {
     setSending(true);
@@ -1004,4 +1003,92 @@ function SendSuiviButton({ client, onSync }) {
     }).then(r => r.json());
     setSending(false);
     if (res.ok) setResult(res);
-    else alert
+    else alert('Erreur : ' + res.error);
+  }
+
+  function copyLink() {
+    if (result?.suiviUrl) {
+      navigator.clipboard.writeText(result.suiviUrl);
+    }
+  }
+
+  if (!open) return (
+    <button onClick={() => { setEmail(client.email || ''); setResult(null); setOpen(true); }}
+      className="flex items-center justify-center gap-2 w-full px-3 py-2.5 mt-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-xl transition-colors">
+      \u{1F517} Envoyer le lien de suivi
+    </button>
+  );
+
+  return (
+    <div className="mt-2 border border-indigo-200 rounded-xl p-4 bg-indigo-50 space-y-3">
+      {result ? (
+        <div className="space-y-2 text-center">
+          <div className="text-2xl">{result.sent ? '✅' : '\u{1F517}'}</div>
+          <p className="text-sm font-semibold text-indigo-800">
+            {result.sent ? `Email envoyé à ${result.sentTo}` : 'Lien de suivi généré'}
+          </p>
+          {result.reason && <p className="text-xs text-slate-500">{result.reason}</p>}
+          <div className="flex gap-2 justify-center">
+            <a href={result.suiviUrl} target="_blank"
+              className="text-xs text-indigo-600 underline break-all">{result.suiviUrl}</a>
+          </div>
+          <div className="flex gap-2 justify-center">
+            <button onClick={copyLink}
+              className="px-3 py-1.5 text-xs bg-white border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-50">
+              \u{1F4CB} Copier le lien
+            </button>
+            <button onClick={() => { setOpen(false); setResult(null); }}
+              className="px-3 py-1.5 text-xs text-slate-500 underline">Fermer</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-indigo-800">Envoyer le lien de suivi</span>
+            <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Email du client</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="client@email.com"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            {!email && <p className="text-xs text-slate-400 mt-1">Laissez vide pour obtenir juste le lien sans l’envoyer.</p>}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={send} disabled={sending}
+              className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-colors">
+              {sending ? 'Envoi…' : email ? '✉️ Envoyer par email' : '\u{1F517} Générer le lien'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function FormSection({ title, children }) {
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, children, span }) {
+  return (
+    <div className={span === 2 ? 'col-span-2' : ''}>
+      <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function Row({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="flex gap-3 text-sm">
+      <span className="text-slate-400 w-28 flex-shrink-0">{label}</span>
+      <span className="text-slate-700">{value}</span>
+    </div>
+  );
+}
