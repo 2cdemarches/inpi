@@ -2,26 +2,32 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServer, requireUser } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
 
-const GU   = 'https://guichet-unique.inpi.fr';
-const PROC = 'https://procedures.inpi.fr';
-const UA   = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const GU = 'https://guichet-unique.inpi.fr';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
 function adminSb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-// ── Cache token par userId ────────────────────────────────────────────────────
+// ── Cache BEARER en DB ────────────────────────────────────────────────────────
 async function getCachedBearer(userId) {
   const { data } = await adminSb().from('tokens')
     .select('value,expires_at').eq('key', 'inpi_bearer').eq('user_id', userId).single();
-  if (!data) return null;
+  if (!data?.value) return null;
   if (data.expires_at && new Date(data.expires_at) < new Date(Date.now() + 5 * 60 * 1000)) return null;
   return data.value;
 }
 
-async function storeBearer(userId, bearer, refresh = null, ttlMs = 90 * 60 * 1000) {
-  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+async function storeBearer(userId, bearer, refresh = null) {
+  // Lire l'expiration depuis le JWT
+  let ttlMs = 90 * 60 * 1000;
+  try {
+    const payload = JSON.parse(Buffer.from(bearer.split('.')[1], 'base64url').toString());
+    if (payload.exp) ttlMs = Math.max(0, payload.exp * 1000 - Date.now() - 5 * 60 * 1000);
+  } catch {}
+
   const sb = adminSb();
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
   await sb.from('tokens').upsert(
     { key: 'inpi_bearer', user_id: userId, value: bearer, expires_at: expiresAt, updated_at: new Date().toISOString() },
     { onConflict: 'key,user_id' }
@@ -34,73 +40,35 @@ async function storeBearer(userId, bearer, refresh = null, ttlMs = 90 * 60 * 100
   }
 }
 
-// ── Login INPI + échange SSO pour obtenir le BEARER GU ───────────────────────
-async function loginAndGetBearer(email, password) {
-  // Étape 1 : charger la page login pour les cookies de session
-  const sessionRes = await fetch(`${PROC}/?/login`, {
-    headers: { 'User-Agent': UA, Accept: 'text/html' },
-    redirect: 'follow',
-  }).catch(() => null);
-  const sessionCookies = sessionRes ? getSetCookiesStr(sessionRes) : '';
+// ── Renouveler le BEARER via /api/user/logged ─────────────────────────────────
+async function refreshBearer(bearer, refreshToken) {
+  const cookieStr = [
+    bearer       ? `BEARER=${bearer}`               : '',
+    refreshToken ? `REFRESH_TOKEN=${refreshToken}`  : '',
+  ].filter(Boolean).join('; ');
 
-  // Étape 2 : login INPIConnect
-  const loginRes = await fetch(`${PROC}/security/v1/inpiconnect/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=UTF-8',
-      Accept: 'application/json, text/*',
-      'User-Agent': UA,
-      Origin: PROC,
-      Referer: `${PROC}/?/login`,
-      'Accept-Language': 'fr-FR,fr;q=0.9',
-      ...(sessionCookies ? { Cookie: sessionCookies } : {}),
-    },
-    body: JSON.stringify({ ref: email, password }),
-  });
-
-  if (!loginRes.ok) {
-    const txt = await loginRes.text().catch(() => '');
-    throw new Error(`Login INPI échoué (${loginRes.status}) : ${txt.slice(0, 150)}`);
-  }
-
-  const loginJson = await loginRes.json().catch(() => ({}));
-  const loginCookies = getSetCookiesStr(loginRes);
-  // Combiner toutes les cookies de session (PHPSESSID + incapsula partagés sur *.inpi.fr)
-  const allCookies = [sessionCookies, loginCookies].filter(Boolean).join('; ');
-
-  // Étape 3 : appeler GET /api/user/logged sur le GU avec les cookies de session
-  // Le GU partage les cookies de session avec procedures.inpi.fr via le domaine .inpi.fr
-  const loggedRes = await fetch(`${GU}/api/user/logged`, {
+  const res = await fetch(`${GU}/api/user/logged`, {
     headers: {
       'User-Agent': UA,
       Accept: 'application/json',
-      Referer: `${PROC}/?home`,
-      Cookie: allCookies,
+      Referer: `${GU}/`,
+      'FromFO': '1',
+      Cookie: cookieStr,
     },
-    redirect: 'follow',
-  }).catch(e => { throw new Error(`Connexion GU impossible : ${e.message}`); });
+  });
 
-  const loggedCookies = parseCookies(getSetCookiesArr(loggedRes));
-  if (loggedCookies['BEARER']) return { bearer: loggedCookies['BEARER'], refresh: loggedCookies['REFRESH_TOKEN'] ?? null };
+  if (!res.ok) return null;
 
-  // Étape 4 : essayer aussi avec csrftoken explicite en query param
-  const csrftoken = loginJson?.data?.csrftoken;
-  if (csrftoken) {
-    const res2 = await fetch(`${GU}/api/user/logged?csrftoken=${csrftoken}`, {
-      headers: { 'User-Agent': UA, Accept: 'application/json', Referer: `${PROC}/?home`, Cookie: allCookies },
-      redirect: 'follow',
-    }).catch(() => null);
-    if (res2) {
-      const c2 = parseCookies(getSetCookiesArr(res2));
-      if (c2['BEARER']) return { bearer: c2['BEARER'], refresh: c2['REFRESH_TOKEN'] ?? null };
-      // Parfois le token est dans le body
-      const j2 = await res2.json().catch(() => null);
-      const t2 = j2?.token ?? j2?.bearer ?? j2?.data?.token ?? j2?.data?.bearer;
-      if (t2) return { bearer: t2, refresh: j2?.refresh_token ?? null };
-    }
-  }
+  // Nouveau BEARER dans Set-Cookie
+  const setCookies = parseCookies(getSetCookiesArr(res));
+  if (setCookies['BEARER']) return { bearer: setCookies['BEARER'], refresh: setCookies['REFRESH_TOKEN'] ?? refreshToken };
 
-  throw new Error('Impossible d\'obtenir le BEARER GU. Vérifiez vos identifiants INPI dans ⚙️ Paramètres.');
+  // Ou dans le body
+  const json = await res.json().catch(() => null);
+  const token = json?.token ?? json?.bearer ?? json?.data?.token;
+  if (token) return { bearer: token, refresh: json?.refresh_token ?? refreshToken };
+
+  return null;
 }
 
 // ── Route GET /api/inpi-auth ──────────────────────────────────────────────────
@@ -108,25 +76,35 @@ export async function GET() {
   try {
     const user = await requireUser();
     const sb = await createSupabaseServer();
+
+    // Lire BEARER + REFRESH_TOKEN depuis settings
     const { data: settings } = await sb.from('settings')
-      .select('inpi_rne_username,inpi_rne_password').eq('user_id', user.id).single();
+      .select('inpi_bearer,inpi_refresh_token').eq('user_id', user.id).single();
 
-    const email    = (settings?.inpi_rne_username || process.env.INPI_RNE_USERNAME || '').trim();
-    const password = (settings?.inpi_rne_password || process.env.INPI_RNE_PASSWORD || '').trim();
+    const storedBearer  = (settings?.inpi_bearer        || '').trim() || null;
+    const refreshToken  = (settings?.inpi_refresh_token || '').trim() || null;
 
-    if (!email || !password) {
+    if (!refreshToken && !storedBearer) {
       return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
     }
 
-    // Récupérer ou renouveler le BEARER GU
+    // 1. Bearer en cache DB encore valide ?
     let bearer = await getCachedBearer(user.id);
+
+    // 2. Sinon, renouveler via /api/user/logged
     if (!bearer) {
-      const result = await loginAndGetBearer(email, password);
-      bearer = result.bearer;
-      await storeBearer(user.id, bearer, result.refresh);
+      const renewed = await refreshBearer(storedBearer, refreshToken);
+      if (!renewed) {
+        return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
+      }
+      bearer = renewed.bearer;
+      await storeBearer(user.id, bearer, renewed.refresh);
+
+      // Mettre à jour le bearer dans settings aussi
+      await sb.from('settings').update({ inpi_bearer: bearer }).eq('user_id', user.id);
     }
 
-    // Récupérer les formalités depuis le tableau de bord GU
+    // 3. Récupérer les formalités
     const ALL_STATUSES = [
       'RECEIVED','PAYMENT_VALIDATION_PENDING','PAID','SIGNATURE_PENDING','PAYMENT_PENDING',
       'SIGNED','AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED',
@@ -140,31 +118,21 @@ export async function GET() {
     for (let page = 1; page <= 20; page++) {
       const res = await fetch(
         `${GU}/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`,
-        { headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Cookie: `BEARER=${bearer}` } }
+        { headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, 'FromFO': '1', Cookie: `BEARER=${bearer}; REFRESH_TOKEN=${refreshToken}` } }
       );
 
       if (res.status === 401) {
-        // Token expiré — invalider le cache et retenter avec un nouveau login
-        try { await adminSb().from('tokens').delete().eq('key', 'inpi_bearer').eq('user_id', user.id); } catch {}
-        const r2 = await loginAndGetBearer(email, password);
-        bearer = r2.bearer;
-        await storeBearer(user.id, bearer, r2.refresh);
-        // Retenter la même page
-        const res2 = await fetch(
-          `${GU}/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`,
-          { headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, Cookie: `BEARER=${bearer}` } }
-        );
-        if (!res2.ok) throw new Error(`GU API ${res2.status}`);
-        const data2 = await res2.json();
-        const items2 = buildList(data2);
-        formalites = formalites.concat(items2);
-        const total2 = data2?.['hydra:totalItems'] ?? data2?.totalItems ?? null;
-        if (total2 !== null && formalites.length >= total2) break;
-        if (items2.length < 50) break;
-        continue;
+        // Renouveler et retenter
+        const renewed = await refreshBearer(bearer, refreshToken);
+        if (!renewed) return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
+        bearer = renewed.bearer;
+        await storeBearer(user.id, bearer, renewed.refresh);
+        await sb.from('settings').update({ inpi_bearer: bearer }).eq('user_id', user.id);
+        continue; // retenter la même page
       }
 
       if (!res.ok) throw new Error(`GU API ${res.status}`);
+
       const data = await res.json();
       const items = buildList(data);
       formalites = formalites.concat(items);
@@ -176,22 +144,15 @@ export async function GET() {
     return NextResponse.json({ ok: true, stats: buildStats(formalites), total: formalites.length, formalites });
 
   } catch (e) {
-    const msg = e.message;
-    if (msg === 'TOKEN_MISSING') return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
 
 // ── Helpers cookies ───────────────────────────────────────────────────────────
 function getSetCookiesArr(res) {
   if (typeof res.headers.getSetCookie === 'function') return res.headers.getSetCookie();
-  const raw = res.headers.get('set-cookie');
-  if (!raw) return [];
-  return raw.split(/,(?=\s*\w+=)/);
-}
-
-function getSetCookiesStr(res) {
-  return getSetCookiesArr(res).map(c => c.split(';')[0]).join('; ');
+  const raw = res.headers.get('set-cookie') ?? '';
+  return raw ? raw.split(/,(?=\s*\w+=)/) : [];
 }
 
 function parseCookies(arr) {

@@ -584,28 +584,28 @@ export default function Dashboard() {
 
               {/* INPI */}
               <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI (API RNE)</h3>
-                <p className="text-xs text-slate-400">Identifiants de votre compte INPI opendata (<a href="https://www.inpi.fr" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">inpi.fr</a>).</p>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Email INPI</label>
-                  <input
-                    type="email"
-                    value={settings.inpi_rne_username || ''}
-                    onChange={e => setSettings(s => ({ ...s, inpi_rne_username: e.target.value }))}
-                    placeholder="votre@email.fr"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  />
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI — Guichet Unique</h3>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
+                  <p className="font-medium">Comment obtenir le REFRESH_TOKEN (une seule fois) :</p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-slate-500">
+                    <li>Connectez-vous sur <a href="https://guichet-unique.inpi.fr" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">guichet-unique.inpi.fr</a></li>
+                    <li>F12 → Application → Cookies → <strong>guichet-unique.inpi.fr</strong></li>
+                    <li>Copiez la valeur de <strong>REFRESH_TOKEN</strong> ci-dessous</li>
+                  </ol>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe INPI</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">REFRESH_TOKEN</label>
                   <input
                     type="password"
-                    value={settings.inpi_rne_password || ''}
-                    onChange={e => setSettings(s => ({ ...s, inpi_rne_password: e.target.value }))}
-                    placeholder="••••••••"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    value={settings.inpi_refresh_token || ''}
+                    onChange={e => setSettings(s => ({ ...s, inpi_refresh_token: e.target.value }))}
+                    placeholder="06bc0aa7b010f3d8..."
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
                 </div>
+                {settings.inpi_refresh_token && (
+                  <p className="text-xs text-green-600">✓ Token configuré — renouvellement automatique toutes les 2h</p>
+                )}
               </div>
 
             </div>
