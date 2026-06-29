@@ -586,58 +586,49 @@ export default function Dashboard() {
               {/* INPI */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI — Guichet Unique</h3>
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
-                  <p className="font-medium">Comment obtenir le REFRESH_TOKEN (une seule fois) :</p>
-                  <ol className="list-decimal list-inside space-y-0.5 text-slate-500">
-                    <li>Connectez-vous sur <a href="https://guichet-unique.inpi.fr" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">guichet-unique.inpi.fr</a></li>
-                    <li>F12 → Application → Cookies → <strong>guichet-unique.inpi.fr</strong></li>
-                    <li>Copiez la valeur de <strong>REFRESH_TOKEN</strong> ci-dessous</li>
-                  </ol>
+
+                {/* Statut renouvellement automatique */}
+                {settings.inpi_refresh_token ? (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800 flex items-start gap-2">
+                    <span className="text-base leading-none">✅</span>
+                    <div>
+                      <p className="font-semibold">Renouvellement automatique actif</p>
+                      <p className="text-green-700 mt-0.5">Le token BEARER est rafraîchi automatiquement toutes les heures par le serveur. Aucune action requise.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1">
+                    <p className="font-semibold">Configuration initiale requise (une seule fois)</p>
+                    <ol className="list-decimal list-inside space-y-0.5 text-amber-700">
+                      <li>Connectez-vous sur <a href="https://guichet-unique.inpi.fr" target="_blank" rel="noopener noreferrer" className="underline font-medium">guichet-unique.inpi.fr</a></li>
+                      <li>F12 → Application → Cookies → <strong>guichet-unique.inpi.fr</strong></li>
+                      <li>Copiez <strong>BEARER</strong> et <strong>REFRESH_TOKEN</strong> ci-dessous</li>
+                      <li>Enregistrez — le serveur gère tout ensuite automatiquement</li>
+                    </ol>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">BEARER <span className="text-slate-400 font-normal">(token JWT actuel)</span></label>
+                  <input
+                    type="password"
+                    value={settings.inpi_bearer || ''}
+                    onChange={e => setSettings(s => ({ ...s, inpi_bearer: e.target.value }))}
+                    placeholder="eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9..."
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">REFRESH_TOKEN</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">REFRESH_TOKEN <span className="text-slate-400 font-normal">(longue durée — permet le renouvellement automatique)</span></label>
                   <input
                     type="password"
                     value={settings.inpi_refresh_token || ''}
                     onChange={e => setSettings(s => ({ ...s, inpi_refresh_token: e.target.value }))}
-                    placeholder="06bc0aa7b010f3d8..."
+                    placeholder="9d6b7ea67f3ee823..."
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
                 </div>
-                {settings.inpi_refresh_token && (
-                  <p className="text-xs text-green-600">✓ Token configuré</p>
-                )}
               </div>
-
-              {/* Bookmarklet renouvellement */}
-              {settings.bookmarklet_token && (
-                <div className="space-y-2">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Renouvellement automatique</h3>
-                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-800 space-y-2">
-                    <p className="font-medium">Quand le token expire (toutes les ~2h) :</p>
-                    <ol className="list-decimal list-inside space-y-1 text-indigo-700">
-                      <li>Ouvrez <a href="https://guichet-unique.inpi.fr" target="_blank" className="underline font-medium">guichet-unique.inpi.fr</a></li>
-                      <li>Cliquez sur le favori ci-dessous</li>
-                    </ol>
-                  </div>
-                  <BookmarkletButton token={settings.bookmarklet_token} />
-                  {/* USER_TOKEN pour le bot Playwright */}
-                  <div className="mt-3 space-y-1">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">USER_TOKEN (bot automatique)</p>
-                    <p className="text-xs text-slate-400">À copier dans <code className="bg-slate-100 px-1 rounded">.env.bot</code> pour le bot Playwright :</p>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 bg-slate-100 text-slate-700 text-xs font-mono px-3 py-2 rounded-lg break-all select-all">
-                        {settings.bookmarklet_token}
-                      </code>
-                      <button
-                        onClick={() => { navigator.clipboard.writeText(settings.bookmarklet_token); }}
-                        className="shrink-0 px-2 py-2 text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg"
-                        title="Copier"
-                      >📋</button>
-                    </div>
-                  </div>
-                </div>
-              )}
 
             </div>
 
