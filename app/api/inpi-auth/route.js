@@ -5,11 +5,13 @@ import { getInpiToken } from '@/lib/inpi';
 const RNE = 'https://registre-national-entreprises.inpi.fr/api';
 
 // ── Route GET /api/inpi-auth ──────────────────────────────────────────────────
+// Récupère le statut INPI de chaque client qui a un inpi_dossier_id
 export async function GET() {
   try {
     const user = await requireUser();
+    const sb = await createSupabaseServer();
 
-    // Récupérer le token RNE (lit les credentials depuis settings en DB)
+    // Token RNE
     let token;
     try {
       token = await getInpiToken(user.id);
@@ -19,52 +21,84 @@ export async function GET() {
 
     const headers = { Authorization: `Bearer ${token}` };
 
-    // Récupérer toutes les formalités (paginées)
-    let formalites = [];
-    for (let page = 1; page <= 20; page++) {
-      const res = await fetch(
-        `${RNE}/formalities/paginated?page=${page}&pageSize=50&order=createdAt&direction=desc`,
-        { headers }
-      );
+    // Récupérer les clients avec un numéro de dossier INPI
+    const { data: clients, error } = await sb
+      .from('clients')
+      .select('id, denomination, type_societe, inpi_dossier_id')
+      .eq('user_id', user.id)
+      .not('inpi_dossier_id', 'is', null)
+      .neq('inpi_dossier_id', '');
 
-      // Fallback sur l'endpoint non paginé si paginated n'existe pas
-      if (res.status === 404) {
-        const res2 = await fetch(`${RNE}/formalities`, { headers });
-        if (!res2.ok) throw new Error(`Erreur API formalités: ${res2.status}`);
-        const data2 = await res2.json();
-        formalites = buildList(data2);
-        break;
-      }
+    if (error) throw new Error(error.message);
+    if (!clients?.length) {
+      return NextResponse.json({ ok: true, stats: buildStats([]), total: 0, formalites: [] });
+    }
 
-      if (!res.ok) throw new Error(`Erreur API formalités: ${res.status}`);
-
-      const data = await res.json();
-      const items = buildList(data);
-      formalites = formalites.concat(items);
-
-      const total = data?.totalItems ?? data?.total ?? data?.['hydra:totalItems'] ?? null;
-      if (total !== null && formalites.length >= total) break;
-      if (items.length < 50) break;
+    // Vérifier le statut de chaque dossier en parallèle (max 5 à la fois)
+    const formalites = [];
+    for (let i = 0; i < clients.length; i += 5) {
+      const batch = clients.slice(i, i + 5);
+      const results = await Promise.all(batch.map(async (client) => {
+        try {
+          const res = await fetch(`${RNE}/formalities/${client.inpi_dossier_id}`, { headers });
+          if (!res.ok) return buildFallback(client, res.status === 404 ? 'NOT_FOUND' : 'ERROR');
+          const data = await res.json();
+          return buildItem(client, data);
+        } catch {
+          return buildFallback(client, 'ERROR');
+        }
+      }));
+      formalites.push(...results);
     }
 
     return NextResponse.json({
       ok: true,
-      stats: buildStatsFromList(formalites),
+      stats: buildStats(formalites),
       total: formalites.length,
       formalites,
     });
 
   } catch (e) {
-    const msg = e.message;
-    if (msg === 'TOKEN_MISSING' || msg.includes('manquants')) {
+    if (e.message === 'TOKEN_MISSING' || e.message.includes('manquants')) {
       return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
     }
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function buildStatsFromList(list) {
+function buildItem(client, data) {
+  const statut = data.status ?? data.statut ?? data.etat ?? null;
+  return {
+    id:           client.inpi_dossier_id,
+    siren:        data.siren ?? data.companyDetails?.siren ?? null,
+    denomination: client.denomination,
+    type:         client.type_societe ?? data.formType ?? data.type ?? null,
+    statut,
+    statut_label: labelStatut(statut),
+    statut_color: colorStatut(statut),
+    date_depot:   data.createdAt ?? data.dateDepot ?? data.created ?? null,
+    date_modif:   data.updatedAt ?? data.dateModification ?? data.updated ?? null,
+    commentaire:  data.commentaire ?? data.motifRejet ?? null,
+  };
+}
+
+function buildFallback(client, statut) {
+  return {
+    id:           client.inpi_dossier_id,
+    siren:        null,
+    denomination: client.denomination,
+    type:         client.type_societe,
+    statut,
+    statut_label: statut === 'NOT_FOUND' ? 'Introuvable' : 'Erreur',
+    statut_color: 'slate',
+    date_depot:   null,
+    date_modif:   null,
+    commentaire:  null,
+  };
+}
+
+function buildStats(list) {
   return {
     total:                     list.length,
     validees:                  list.filter(f => ['VALIDATED','VALIDATED_BO_AMENDMENT_SIGNED','VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING'].includes(f.statut)).length,
@@ -72,22 +106,6 @@ function buildStatsFromList(list) {
     en_attente_regularisation: list.filter(f => ['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED','AMENDMENT_PAYMENT_PENDING','AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID','AMENDED'].includes(f.statut)).length,
     en_attente_validation:     list.filter(f => ['VALIDATION_PENDING','RECEIVED'].includes(f.statut)).length,
   };
-}
-
-function buildList(raw) {
-  const items = raw?.data ?? raw?.items ?? raw?.['hydra:member'] ?? raw?.member ?? (Array.isArray(raw) ? raw : []);
-  return items.map(f => ({
-    id:           f.id ?? f.liasseNumber ?? f['@id'],
-    siren:        f.siren ?? f.companyDetails?.siren ?? f.company?.siren,
-    denomination: f.companyName ?? f.denomination ?? f.raisonSociale ?? f.company?.denomination,
-    type:         f.formType ?? f.type ?? f.formalityType,
-    statut:       f.status ?? f.statut,
-    statut_label: labelStatut(f.status ?? f.statut),
-    statut_color: colorStatut(f.status ?? f.statut),
-    date_depot:   f.createdAt ?? f.dateDepot,
-    date_modif:   f.updatedAt ?? f.dateModification,
-    commentaire:  f.commentaire ?? f.motifRejet ?? null,
-  }));
 }
 
 function labelStatut(s) {
@@ -101,6 +119,7 @@ function labelStatut(s) {
     COMPLIANCE_INSEE_PENDING: 'En cours INSEE', ERROR_VALIDATION: 'Erreur validation',
     ERROR_DECLARATION_INSEE: 'Erreur INSEE', ERROR_INSEE_EXISTS_PM: 'SIREN déjà existant',
     VALIDATED_BO_AMENDMENT_SIGNED: 'Validée', VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING: 'Validée',
+    NOT_FOUND: 'Introuvable', ERROR: 'Erreur',
   };
   return map[s] ?? s ?? '—';
 }
