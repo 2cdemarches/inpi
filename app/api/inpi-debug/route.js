@@ -33,7 +33,7 @@ export async function GET(req) {
 
   const sb = adminSb();
   const { data: s } = await sb.from('settings')
-    .select('inpi_email, inpi_password, inpi_incap_cookie')
+    .select('inpi_email, inpi_password, inpi_incap_cookie, inpi_refresh_token')
     .eq('user_id', 'a18b292a-13b8-453b-9a94-b5b50f227c51')
     .single();
 
@@ -87,11 +87,35 @@ export async function GET(req) {
   const ssoUrl = body2?.data?.useUrl || null;
   log.push({ step: 2, status: r2.status, cookies: Object.keys(c2), has_sso_url: !!ssoUrl, sso_url_start: ssoUrl?.slice(0, 60) });
 
+  // Étape 3b : Tester le refresh token directement (sans SSO)
+  const refreshToken = s?.inpi_refresh_token || '';
+  const r3b = await fetch(`${GU}/api/token/refresh`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': UA,
+      'Referer': `${GU}/`,
+      'Origin': GU,
+      'FromFO': '1',
+      'Cookie': `REFRESH_TOKEN=${refreshToken}`,
+    },
+  });
+  const cx3b = parseCookieHeader(getSetCookies(r3b));
+  const body3b = await r3b.text().catch(() => null);
+  log.push({
+    step: '3b_token_refresh',
+    status: r3b.status,
+    set_cookies: Object.keys(cx3b),
+    has_bearer: !!cx3b['BEARER'],
+    body_preview: body3b?.slice(0, 200),
+  });
+
   // Étape 3 : Suivre l'URL SSO manuellement
   if (ssoUrl) {
     // Injecter le cookie Incapsula de guichet-unique.inpi.fr si disponible
     const incapVal = s?.inpi_incap_cookie || '';
-    log.push({ step: '2.5_incap_check', incap_cookie_length: incapVal.length, incap_cookie_preview: incapVal.slice(0, 10) || '(vide)' });
     if (incapVal) {
       const incapEntry = `visid_incap_2207353=${incapVal}`;
       cookieJar = cookieJar ? `${cookieJar}; ${incapEntry}` : incapEntry;
