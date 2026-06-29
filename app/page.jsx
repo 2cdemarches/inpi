@@ -1015,7 +1015,7 @@ function SendSuiviButton({ client, onSync }) {
   if (!open) return (
     <button onClick={() => { setEmail(client.email || ''); setResult(null); setOpen(true); }}
       className="flex items-center justify-center gap-2 w-full px-3 py-2.5 mt-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-xl transition-colors">
-      \u{1F517} Envoyer le lien de suivi
+      🔗 Envoyer le lien de suivi
     </button>
   );
 
@@ -1023,7 +1023,7 @@ function SendSuiviButton({ client, onSync }) {
     <div className="mt-2 border border-indigo-200 rounded-xl p-4 bg-indigo-50 space-y-3">
       {result ? (
         <div className="space-y-2 text-center">
-          <div className="text-2xl">{result.sent ? '✅' : '\u{1F517}'}</div>
+          <div className="text-2xl">{result.sent ? '✅' : '🔗'}</div>
           <p className="text-sm font-semibold text-indigo-800">
             {result.sent ? `Email envoyé à ${result.sentTo}` : 'Lien de suivi généré'}
           </p>
@@ -1035,7 +1035,7 @@ function SendSuiviButton({ client, onSync }) {
           <div className="flex gap-2 justify-center">
             <button onClick={copyLink}
               className="px-3 py-1.5 text-xs bg-white border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-50">
-              \u{1F4CB} Copier le lien
+              📋 Copier le lien
             </button>
             <button onClick={() => { setOpen(false); setResult(null); }}
               className="px-3 py-1.5 text-xs text-slate-500 underline">Fermer</button>
@@ -1056,7 +1056,7 @@ function SendSuiviButton({ client, onSync }) {
           <div className="flex gap-2">
             <button onClick={send} disabled={sending}
               className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-colors">
-              {sending ? 'Envoi…' : email ? '✉️ Envoyer par email' : '\u{1F517} Générer le lien'}
+              {sending ? 'Envoi…' : email ? '✉️ Envoyer par email' : '🔗 Générer le lien'}
             </button>
           </div>
         </>
