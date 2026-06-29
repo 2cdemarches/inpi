@@ -62,7 +62,6 @@ async function loginToInpi(email, password) {
       'User-Agent': UA,
       Origin: PROC,
       Referer: `${PROC}/?/login`,
-      'X-Client-Version': '1.27.0-1776089031331',
       'Accept-Language': 'fr-FR,fr;q=0.9',
       ...(sessionCookies ? { Cookie: sessionCookies } : {}),
     },
