@@ -38,12 +38,19 @@ function EtapeTag({ e }) {
 }
 
 function FicheModal({ f, onClose }) {
-  const [copied, setCopied]   = useState(false);
-  const [email, setEmail]     = useState('');
-  const [sending, setSending] = useState(false);
-  const [sent, setSent]       = useState(false);
-  const [sendErr, setSendErr] = useState(null);
+  const [copied, setCopied]     = useState(false);
+  const [email, setEmail]       = useState('');
+  const [sending, setSending]   = useState(false);
+  const [sent, setSent]         = useState(false);
+  const [sendErr, setSendErr]   = useState(null);
+  const [contacts, setContacts] = useState([]);
   const lienSuivi = `${window.location.origin}/inpi/suivi/${f.id}`;
+
+  useEffect(() => {
+    fetch(`/api/inpi/contacts?formalite_id=${f.id}`)
+      .then(r => r.json())
+      .then(j => { if (j.ok) setContacts(j.contacts); });
+  }, [f.id, sent]);
 
   function copier() {
     navigator.clipboard.writeText(lienSuivi).then(() => {
@@ -151,6 +158,18 @@ function FicheModal({ f, onClose }) {
               </div>
             )}
             {sendErr && <p className="text-xs text-red-500">{sendErr}</p>}
+            {contacts.length > 0 && (
+              <div className="mt-1">
+                <p className="text-xs text-slate-400 mb-1">Déjà envoyé à :</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {contacts.map((c, i) => (
+                    <span key={i} className="text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
+                      {c.email} <span className="text-slate-400">· {new Date(c.sent_at).toLocaleDateString('fr-FR')}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -164,6 +183,7 @@ export default function InpiPage() {
   const [error, setError]     = useState(null);
   const [search, setSearch]   = useState('');
   const [filtre, setFiltre]   = useState('tous');
+  const [filtreType, setFiltreType] = useState('tous');
   const [fiche, setFiche]     = useState(null);
 
   async function load() {
@@ -201,7 +221,8 @@ export default function InpiPage() {
       f.denomination?.toLowerCase().includes(search.toLowerCase()) ||
       f.siren?.includes(search);
     const matchFiltre = filtre === 'tous' || (STATUTS[filtre] || []).includes(f.statut);
-    return matchSearch && matchFiltre;
+    const matchType   = filtreType === 'tous' || f.type === filtreType;
+    return matchSearch && matchFiltre && matchType;
   });
 
   return (
@@ -260,6 +281,20 @@ export default function InpiPage() {
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Rechercher par dénomination ou SIREN…"
           className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
+
+        {/* Filtre par type */}
+        <div className="flex gap-2 flex-wrap">
+          {['tous', 'Création', 'Modification', 'Cessation'].map(t => (
+            <button key={t} onClick={() => setFiltreType(t)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
+                filtreType === t
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-orange-300'
+              }`}>
+              {t === 'tous' ? 'Tous types' : t}
+            </button>
+          ))}
+        </div>
 
         {/* États */}
         {loading && !data && <p className="text-center text-slate-400 py-16">Chargement des formalités…</p>}

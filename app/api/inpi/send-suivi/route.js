@@ -18,6 +18,12 @@ export async function POST(req) {
     const cabinetName = settings?.nom_cabinet || 'Votre cabinet';
     const suiviUrl = `${APP_URL}/inpi/suivi/${formaliteId}`;
 
+    // Enregistrer le contact
+    await sb.from('inpi_contacts').upsert({
+      user_id: user.id, formalite_id: String(formaliteId), email,
+      sent_at: new Date().toISOString(),
+    }, { onConflict: 'formalite_id,email' });
+
     await sendMail(settings, {
       to: email,
       subject: `Suivi de votre formalité — ${denomination || formaliteId}`,
