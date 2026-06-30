@@ -38,7 +38,11 @@ function EtapeTag({ e }) {
 }
 
 function FicheModal({ f, onClose }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied]   = useState(false);
+  const [email, setEmail]     = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent]       = useState(false);
+  const [sendErr, setSendErr] = useState(null);
   const lienSuivi = `${window.location.origin}/inpi/suivi/${f.id}`;
 
   function copier() {
@@ -46,6 +50,22 @@ function FicheModal({ f, onClose }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  async function envoyerEmail() {
+    if (!email) return;
+    setSending(true); setSendErr(null);
+    try {
+      const res = await fetch('/api/inpi/send-suivi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formaliteId: f.id, denomination: f.denomination, siren: f.siren, email }),
+      });
+      const json = await res.json();
+      if (json.ok) setSent(true);
+      else setSendErr(json.error || 'Erreur envoi');
+    } catch (e) { setSendErr(e.message); }
+    finally { setSending(false); }
   }
 
   return (
@@ -104,15 +124,33 @@ function FicheModal({ f, onClose }) {
           )}
 
           {/* Lien de suivi client */}
-          <div className="border-t border-slate-100 pt-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Lien de suivi client</p>
+          <div className="border-t border-slate-100 pt-4 space-y-3">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Envoyer au client</p>
             <div className="flex gap-2">
               <input readOnly value={lienSuivi} className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 text-slate-600 truncate" />
-              <button onClick={copier} className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${copied ? 'bg-green-500 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}>
+              <button onClick={copier} className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${copied ? 'bg-green-500 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
                 {copied ? '✓ Copié' : 'Copier'}
               </button>
             </div>
-            <p className="text-xs text-slate-400 mt-1.5">Ce lien permet au client de suivre l'avancement sans se connecter.</p>
+            {sent ? (
+              <p className="text-xs text-green-600 font-medium">✓ Email envoyé à {email}</p>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="email@client.fr"
+                  className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  onKeyDown={e => e.key === 'Enter' && envoyerEmail()}
+                />
+                <button onClick={envoyerEmail} disabled={sending || !email}
+                  className="px-4 py-2 rounded-lg text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-50 whitespace-nowrap">
+                  {sending ? '…' : 'Envoyer'}
+                </button>
+              </div>
+            )}
+            {sendErr && <p className="text-xs text-red-500">{sendErr}</p>}
           </div>
         </div>
       </div>
