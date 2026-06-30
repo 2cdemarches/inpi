@@ -91,7 +91,7 @@ export async function GET(request, { params }) {
     // Récupérer le client par son token de suivi
     const { data: client, error } = await sb
       .from('clients')
-      .select('id,user_id,denomination,type_societe,capital,ville_siege,prenom,nom,email,date_signature,statuts_manuels,docusign_envelope_id,inpi_dossier_id,created_at')
+      .select('id,user_id,denomination,type_societe,capital,ville_siege,prenom,nom,email,date_signature,statuts_manuels,docusign_envelope_id,inpi_dossier_id,inpi_formalite_id,created_at')
       .eq('suivi_token', token)
       .single();
 
@@ -111,10 +111,11 @@ export async function GET(request, { params }) {
 
     const statuts = client.statuts_manuels || [];
 
-    // Récupérer le statut INPI réel si un dossier est lié
+    // Récupérer le statut INPI réel (inpi_dossier_id ou inpi_formalite_id)
     let inpiStatut = null;
-    if (client.inpi_dossier_id && client.user_id) {
-      inpiStatut = await fetchInpiStatut(client.inpi_dossier_id, client.user_id);
+    const dossierId = client.inpi_dossier_id || client.inpi_formalite_id;
+    if (dossierId && client.user_id) {
+      inpiStatut = await fetchInpiStatut(dossierId, client.user_id);
     }
 
     const steps = buildTimeline(client, lastSign, statuts, inpiStatut);
