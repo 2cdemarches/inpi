@@ -173,81 +173,96 @@ export async function GET(request, { params }) {
 function buildTimeline(client, lastSign, statuts, inpiStatut = null) {
   const steps = [];
 
-  // 1. Dossier créé
-  steps.push({
-    id:       'creation',
-    label:    'Dossier créé',
-    desc:     'Votre dossier a été enregistré dans notre système.',
-    done:     true,
-    date:     client.created_at ? new Date(client.created_at).toLocaleDateString('fr-FR') : null,
-    icon:     'folder',
-  });
-
-  // 2. Statuts générés (vérifier si au moins un doc a été produit)
+  // 1. Documents créés / modifiés
   const hasDocs = statuts.some(s =>
-    ['Acompte reçu','Solde reçu','Pièces reçues','Envoyé pour signature','Signé','Déposé INPI','Immatriculé','Dossier clôturé'].includes(s.label)
-  );
-  const statutsDate = statuts.find(s => s.label === 'Pièces reçues')?.date ?? null;
+    ['Pièces reçues','Envoyé pour signature','Signé','Déposé INPI','Immatriculé','Dossier clôturé'].includes(s.label)
+  ) || !!client.date_signature || !!lastSign;
   steps.push({
-    id:    'statuts',
-    label: 'Statuts rédigés',
-    desc:  'Les statuts et documents constitutifs ont été préparés.',
-    done:  hasDocs || !!client.date_signature,
-    date:  statutsDate || (client.date_signature ? client.date_signature : null),
+    id:    'documents',
+    label: 'Documents créés',
+    desc:  hasDocs ? 'Les statuts et documents constitutifs ont été préparés.' : 'Préparation des statuts et documents constitutifs.',
+    done:  hasDocs,
+    date:  client.created_at ? new Date(client.created_at).toLocaleDateString('fr-FR') : null,
     icon:  'document',
   });
 
-  // 3. Signature
+  // 2. En attente de signature DocuSign
   const isSigned  = lastSign?.status === 'signed';
   const isPending = lastSign?.status === 'pending' && lastSign?.expires_at && new Date(lastSign.expires_at) >= new Date();
-  const signDate  = isSigned && lastSign?.signed_at
-    ? new Date(lastSign.signed_at).toLocaleDateString('fr-FR')
-    : null;
-
   steps.push({
-    id:      'signature',
-    label:   'Signature électronique',
+    id:      'attente_signature',
+    label:   'En attente de signature',
     desc:    isSigned
-      ? `Documents signés le ${signDate}${lastSign?.signer_name ? ' par ' + lastSign.signer_name : ''}.`
+      ? 'Documents envoyés et signés via DocuSign.'
       : isPending
         ? 'Lien de signature envoyé — en attente de votre signature.'
-        : 'Signature des documents constitutifs.',
+        : 'Les documents vous seront envoyés pour signature électronique.',
     done:    isSigned,
     pending: isPending && !isSigned,
-    date:    signDate,
+    date:    null,
     icon:    'pen',
   });
 
-  // 4. Dépôt INPI — priorité au statut INPI réel, sinon statuts_manuels
-  const depositedManuel = statuts.some(s => s.label === 'Déposé INPI');
-  const depositedInpi   = inpiStatut ? STATUTS_DEPOT.includes(inpiStatut) : false;
-  const deposited       = depositedManuel || depositedInpi;
-  const depositDate     = statuts.find(s => s.label === 'Déposé INPI')?.date ?? null;
-  const depotPending    = depositedInpi && !STATUTS_IMMAT.includes(inpiStatut);
+  // 3. Documents signés
+  const signDate = isSigned && lastSign?.signed_at
+    ? new Date(lastSign.signed_at).toLocaleDateString('fr-FR')
+    : null;
   steps.push({
-    id:    'depot',
-    label: 'Dépôt au Registre National',
-    desc:  deposited
-      ? 'Votre dossier a été reçu par l\'INPI (Guichet Unique).'
-      : 'Envoi du dossier complet au Guichet Unique de l\'INPI.',
-    done:    deposited && !depotPending,
-    pending: depotPending,
-    date:    depositDate,
-    icon:    'building',
+    id:    'signe',
+    label: 'Documents signés',
+    desc:  isSigned
+      ? `Signature effectuée le ${signDate}${lastSign?.signer_name ? ' par ' + lastSign.signer_name : ''}.`
+      : 'Signature électronique des documents constitutifs.',
+    done:  isSigned,
+    date:  signDate,
+    icon:  'check',
   });
 
-  // 5. Immatriculation — validé par l'INPI
-  const immatManuel = statuts.some(s => s.label === 'Immatriculé');
-  const immatInpi   = inpiStatut ? STATUTS_IMMAT.includes(inpiStatut) : false;
-  const immat       = immatManuel || immatInpi;
-  const immatDate   = statuts.find(s => s.label === 'Immatriculé')?.date ?? null;
+  // 4. En attente de validation INPI (avec sous-étapes)
+  const isDepose   = inpiStatut ? STATUTS_DEPOT.includes(inpiStatut) : statuts.some(s => s.label === 'Déposé INPI');
+  const isValide   = inpiStatut ? STATUTS_IMMAT.includes(inpiStatut) : statuts.some(s => s.label === 'Immatriculé');
+  const isRejete   = inpiStatut ? ['REJECTED','ERROR_VALIDATION','ERROR_DECLARATION_INSEE','ERROR_INSEE_EXISTS_PM'].includes(inpiStatut) : false;
+  const isAmend    = inpiStatut ? ['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED',
+    'AMENDMENT_PAYMENT_PENDING','AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID','AMENDED'].includes(inpiStatut) : false;
+
+  // Sous-étapes INPI (visibles quand le dossier est déposé)
+  const substeps = [];
+  if (isDepose) {
+    substeps.push({
+      id: 'recu', label: 'Dossier reçu par l\'INPI',
+      done: true, color: 'green',
+    });
+    if (isRejete) {
+      substeps.push({ id: 'rejete', label: 'Dossier rejeté — corrections requises', done: false, color: 'red' });
+    } else if (isAmend) {
+      substeps.push({ id: 'regularisation', label: 'En cours de régularisation', done: false, color: 'amber', pending: true });
+    } else if (!isValide) {
+      substeps.push({ id: 'validation', label: 'Vérification en cours par l\'INPI', done: false, color: 'blue', pending: true });
+    }
+  }
+
   steps.push({
-    id:    'immatriculation',
-    label: 'Immatriculation',
-    desc:  immat
-      ? 'Votre société est officiellement immatriculée au RCS !'
-      : 'Validation par l\'INPI et attribution du SIREN.',
-    done:  immat,
+    id:       'inpi',
+    label:    'En attente de validation INPI',
+    desc:     isDepose
+      ? isValide ? 'Dossier validé par le Guichet Unique.' : 'Votre dossier est en cours d\'examen par l\'INPI.'
+      : 'Envoi du dossier complet au Guichet Unique de l\'INPI.',
+    done:     isValide,
+    pending:  isDepose && !isValide && !isRejete,
+    date:     statuts.find(s => s.label === 'Déposé INPI')?.date ?? null,
+    icon:     'building',
+    substeps,
+  });
+
+  // 5. Validé / Immatriculé
+  const immatDate = statuts.find(s => s.label === 'Immatriculé')?.date ?? null;
+  steps.push({
+    id:    'valide',
+    label: 'Immatriculé',
+    desc:  isValide
+      ? `Votre société est officiellement immatriculée${client.siren ? ' — SIREN : ' + client.siren : ''} !`
+      : 'Validation par l\'INPI et attribution du numéro SIREN.',
+    done:  isValide,
     date:  immatDate,
     icon:  'check',
   });

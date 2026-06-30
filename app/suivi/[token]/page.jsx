@@ -33,6 +33,24 @@ function Icon({ name, className = 'w-5 h-5' }) {
   return icons[name] ?? icons.document;
 }
 
+// ── Sous-étape INPI ───────────────────────────────────────────────────────────
+function SubStep({ sub }) {
+  const colors = {
+    green: { dot: 'bg-green-500', text: 'text-green-700', bg: 'bg-green-50 border-green-200' },
+    red:   { dot: 'bg-red-500',   text: 'text-red-600',   bg: 'bg-red-50 border-red-200' },
+    amber: { dot: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
+    blue:  { dot: 'bg-blue-400',  text: 'text-blue-700',  bg: 'bg-blue-50 border-blue-200' },
+  };
+  const c = colors[sub.color] ?? colors.blue;
+  return (
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium ${c.bg} ${c.text} ${sub.pending ? 'animate-pulse' : ''}`}>
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
+      {sub.label}
+      {sub.done && <span className="ml-auto">✓</span>}
+    </div>
+  );
+}
+
 // ── Composant step ────────────────────────────────────────────────────────────
 function Step({ step, isLast }) {
   const done    = step.done;
@@ -82,6 +100,11 @@ function Step({ step, isLast }) {
           </div>
         </div>
         <p className={`text-xs mt-1 leading-relaxed ${descCls}`}>{step.desc}</p>
+        {step.substeps?.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {step.substeps.map(sub => <SubStep key={sub.id} sub={sub} />)}
+          </div>
+        )}
       </div>
     </div>
   );
