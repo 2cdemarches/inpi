@@ -204,9 +204,10 @@ export default function Dashboard() {
   });
   const [inpiLoading, setInpiLoading] = useState(true);
   const [search, setSearch]         = useState('');
-  const [filterType, setFilterType]   = useState('tous');
-  const [filterStatut, setFilterStatut]       = useState('tous');
+  const [filterType, setFilterType]         = useState('tous');
+  const [filterStatut, setFilterStatut]     = useState('tous');
   const [filterFormalite, setFilterFormalite] = useState('tous');
+  const [filterSignature, setFilterSignature] = useState('tous');
   const [showForm, setShowForm]     = useState(false);
   const [editClient, setEditClient] = useState(null);
   const [form, setForm]             = useState(EMPTY_FORM);
@@ -397,7 +398,14 @@ export default function Dashboard() {
           ? !formalite
           : formalite?.statut_color === filterStatut;
       const matchFormaliteType = filterFormalite === 'tous' || formalite?.type === filterFormalite;
-      return matchSearch && matchType && matchStatut && matchFormaliteType;
+      const signReq = signRequests.find(r => r.client_id === c.id);
+      const signStatus = signReq?.status ?? 'aucune';
+      const matchSignature = filterSignature === 'tous' ? true
+        : filterSignature === 'signed'  ? signStatus === 'signed'
+        : filterSignature === 'pending' ? signStatus === 'pending'
+        : filterSignature === 'aucune' ? !signReq
+        : true;
+      return matchSearch && matchType && matchStatut && matchFormaliteType && matchSignature;
     })
     .sort((a, b) => {
       const fa = matchFormalite(a, inpiData?.formalites ?? []);
@@ -488,6 +496,13 @@ export default function Dashboard() {
               <option value="Création">Création</option>
               <option value="Modification">Modification</option>
               <option value="Cessation">Cessation</option>
+            </select>
+            <select value={filterSignature} onChange={e => setFilterSignature(e.target.value)}
+              className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50">
+              <option value="tous">Toutes signatures</option>
+              <option value="signed">Signé</option>
+              <option value="pending">En attente de signature</option>
+              <option value="aucune">Sans signature</option>
             </select>
           </div>
 
