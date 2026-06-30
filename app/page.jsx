@@ -147,7 +147,8 @@ export default function Dashboard() {
   const [inpiLoading, setInpiLoading] = useState(true);
   const [search, setSearch]         = useState('');
   const [filterType, setFilterType]   = useState('tous');
-  const [filterStatut, setFilterStatut] = useState('tous');
+  const [filterStatut, setFilterStatut]       = useState('tous');
+  const [filterFormalite, setFilterFormalite] = useState('tous');
   const [showForm, setShowForm]     = useState(false);
   const [editClient, setEditClient] = useState(null);
   const [form, setForm]             = useState(EMPTY_FORM);
@@ -336,7 +337,8 @@ export default function Dashboard() {
         : filterStatut === 'sans'
           ? !formalite
           : formalite?.statut_color === filterStatut;
-      return matchSearch && matchType && matchStatut;
+      const matchFormaliteType = filterFormalite === 'tous' || formalite?.type === filterFormalite;
+      return matchSearch && matchType && matchStatut && matchFormaliteType;
     })
     .sort((a, b) => {
       const fa = matchFormalite(a, inpiData?.formalites ?? []);
@@ -421,6 +423,13 @@ export default function Dashboard() {
               <option value="blue">⏳ En attente</option>
               <option value="sans">— Sans formalité INPI</option>
             </select>
+            <select value={filterFormalite} onChange={e => setFilterFormalite(e.target.value)}
+              className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50">
+              <option value="tous">Tous types formalité</option>
+              <option value="Création">Création</option>
+              <option value="Modification">Modification</option>
+              <option value="Cessation">Cessation</option>
+            </select>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -454,6 +463,7 @@ export default function Dashboard() {
                   {/* Grille statuts */}
                   <div className="flex-shrink-0 flex items-center gap-2">
                     <Badge label={client.type_societe} color="purple" />
+                    {(() => { const f = matchFormalite(client, inpiData?.formalites ?? []); return f?.type ? <Badge label={f.type} color={f.type === 'Création' ? 'indigo' : f.type === 'Modification' ? 'amber' : 'slate'} /> : null; })()}
                     <InpiStatus formalite={matchFormalite(client, inpiData?.formalites)} loading={inpiLoading && !inpiData} />
                     {(() => {
                       const reqs = signRequests.filter(r => r.client_id === client.id);
