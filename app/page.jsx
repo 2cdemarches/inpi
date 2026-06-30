@@ -72,33 +72,51 @@ function Badge({ label, color = 'slate', dot = false }) {
 // ── Spinner ───────────────────────────────────────────────────────────────────
 function TestDocuSign() {
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [result, setResult]   = useState(null);
-  async function run() {
+
+  async function test() {
     setLoading(true); setResult(null);
     const r = await fetch('/api/cron/docusign-sync/test').then(x => x.json());
-    setResult(r); setLoading(false);
+    setResult({ mode: 'test', ...r }); setLoading(false);
   }
+  async function sync() {
+    setSyncing(true); setResult(null);
+    const r = await fetch('/api/cron/docusign-sync/test', { method: 'POST' }).then(x => x.json());
+    setResult({ mode: 'sync', ...r }); setSyncing(false);
+  }
+
   return (
     <div className="space-y-2">
-      <button onClick={run} disabled={loading}
-        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
-        {loading ? 'Connexion…' : '🔍 Tester la connexion'}
-      </button>
+      <div className="flex gap-2">
+        <button onClick={test} disabled={loading || syncing}
+          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
+          {loading ? 'Connexion…' : '🔍 Tester'}
+        </button>
+        <button onClick={sync} disabled={loading || syncing}
+          className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50">
+          {syncing ? 'Sync…' : '⚡ Sync maintenant'}
+        </button>
+      </div>
       {result && (
         <div className={`rounded-lg p-2 text-xs ${result.ok ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-700'}`}>
-          {result.ok ? (
+          {result.ok ? result.mode === 'test' ? (
             <>
-              <p className="font-semibold">✅ Connecté via {result.host}</p>
-              <p>{result.total_docusign} email(s) DocuSign trouvés au total</p>
+              <p className="font-semibold">✅ Connecté — {result.total_docusign} email(s) DocuSign</p>
               {result.derniers?.length > 0 && (
                 <ul className="mt-1 space-y-0.5">
                   {result.derniers.map((m, i) => (
-                    <li key={i} className="truncate">
-                      {m.seen ? '📭' : '📬'} <span className="font-medium">{m.subject}</span>
-                    </li>
+                    <li key={i} className="truncate">{m.seen ? '📭' : '📬'} {m.subject}</li>
                   ))}
                 </ul>
               )}
+            </>
+          ) : (
+            <>
+              <p className="font-semibold">✅ Sync terminée — {result.processed} traité(s)</p>
+              {result.signed > 0 && <p>✍️ {result.signed} signé(s)</p>}
+              {result.sent   > 0 && <p>📤 {result.sent} envoi(s) détecté(s)</p>}
+              {result.not_found?.length > 0 && <p className="text-amber-700">⚠️ Clients introuvables : {result.not_found.join(', ')}</p>}
             </>
           ) : <p>❌ {result.error}</p>}
         </div>
