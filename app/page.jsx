@@ -118,16 +118,20 @@ function InpiStatus({ formalite, loading }) {
 // ── Matching client ↔ formalité INPI ─────────────────────────────────────────
 function matchFormalite(client, formalites = []) {
   if (!formalites.length) return null;
-  // 1. Correspondance exacte par dénomination
-  const exact = formalites.find(f =>
-    f.denomination?.toLowerCase().trim() === client.denomination?.toLowerCase().trim()
-  );
+  // 1. Lien explicite par ID
+  if (client.inpi_formalite_id) {
+    const byId = formalites.find(f => String(f.id) === String(client.inpi_formalite_id));
+    if (byId) return byId;
+  }
+  // 2. Correspondance exacte par dénomination
+  const denom = client.denomination?.toLowerCase().trim();
+  if (!denom) return null;
+  const exact = formalites.find(f => f.denomination?.toLowerCase().trim() === denom);
   if (exact) return exact;
-  // 2. Correspondance partielle (le nom INPI contient la dénomination ou vice-versa)
+  // 3. Correspondance partielle
   return formalites.find(f =>
-    f.denomination && client.denomination &&
-    (f.denomination.toLowerCase().includes(client.denomination.toLowerCase()) ||
-     client.denomination.toLowerCase().includes(f.denomination.toLowerCase()))
+    f.denomination &&
+    (f.denomination.toLowerCase().includes(denom) || denom.includes(f.denomination.toLowerCase()))
   ) || null;
 }
 
@@ -156,6 +160,8 @@ export default function Dashboard() {
   const [settings, setSettings]         = useState({ nom_cabinet: '', representant_cabinet: '', adresse_cabinet: '', email_cabinet: '', smtp_host: '', smtp_port: 587, smtp_user: '', smtp_pass: '', smtp_from: '', docusign_integration_key: '', docusign_user_id: '', docusign_account_id: '', docusign_private_key: '', docusign_env: 'production', inpi_rne_username: '', inpi_rne_password: '' });
   const [savingSettings, setSavingSettings] = useState(false);
   const [signRequests, setSignRequests]     = useState([]);
+  const [syncing, setSyncing]               = useState(false);
+  const [syncResult, setSyncResult]         = useState(null);
 
   const loadClients = useCallback(async () => {
     setLoading(true);
@@ -217,6 +223,25 @@ export default function Dashboard() {
       }
     }).catch(() => {});
   }, []);
+
+  async function syncInpi() {
+    if (!inpiData?.formalites?.length) return;
+    setSyncing(true); setSyncResult(null);
+    try {
+      const res = await fetch('/api/clients/sync-inpi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formalites: inpiData.formalites }),
+      });
+      const json = await res.json();
+      setSyncResult(json);
+      if (json.ok) await loadClients();
+    } catch (e) {
+      setSyncResult({ ok: false, error: e.message });
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function saveSettings() {
     setSavingSettings(true);
@@ -317,7 +342,22 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-2">
             <a href="/signature" className="px-3 py-2 text-sm text-blue-600 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 font-medium">✍️ Signatures</a>
-            <a href="/inpi"      className="px-3 py-2 text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-xl hover:bg-orange-100 font-medium">🏛️ INPI</a>
+            <button
+              onClick={syncInpi}
+              disabled={syncing || inpiLoading || !inpiData?.formalites?.length}
+              title={!inpiData ? 'Données INPI non chargées' : `${inpiData.formalites.length} formalités disponibles`}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-xl hover:bg-orange-100 font-medium disabled:opacity-40">
+              {syncing
+                ? <><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Sync…</>
+                : '🏛️ Sync INPI'}
+            </button>
+            {syncResult && (
+              <span className={`text-xs px-2 py-1 rounded-lg font-medium ${syncResult.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                {syncResult.ok
+                  ? `+${syncResult.created} créés · ${syncResult.linked} liés · ${syncResult.updated} màj`
+                  : syncResult.error}
+              </span>
+            )}
             <button onClick={() => setShowSettings(true)} className="px-3 py-2 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 font-medium">⚙️ Paramètres</button>
             <button onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; }} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl font-medium">Déconnexion</button>
             <button onClick={openNew}
