@@ -48,3 +48,32 @@ export async function GET() {
     return NextResponse.json({ ok: false, status: 'error', message: e.message });
   }
 }
+
+// POST /api/inpi-check — force le renouvellement du token via REFRESH_TOKEN
+export async function POST() {
+  try {
+    const user = await requireUser();
+    const sb = adminSb();
+    const { data: s } = await sb.from('settings').select('inpi_refresh_token, inpi_email, inpi_password').eq('user_id', user.id).single();
+
+    if (!s?.inpi_refresh_token && (!s?.inpi_email || !s?.inpi_password)) {
+      return NextResponse.json({ ok: false, message: 'Aucun REFRESH_TOKEN ni identifiants INPI configurés' });
+    }
+
+    // Appeler le cron de refresh pour cet utilisateur uniquement
+    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'https://inpi-ten.vercel.app'}/api/cron/inpi-refresh`, {
+      headers: { Authorization: `Bearer ${process.env.CRON_SECRET || ''}` },
+    });
+    const json = await res.json().catch(() => ({}));
+
+    // Re-vérifier le token après refresh
+    const { data: s2 } = await sb.from('settings').select('inpi_bearer').eq('user_id', user.id).single();
+    const valid = s2?.inpi_bearer ? jwtIsValid(s2.inpi_bearer) : false;
+    const expiry = s2?.inpi_bearer ? jwtExpiry(s2.inpi_bearer) : null;
+
+    if (valid) return NextResponse.json({ ok: true, status: 'refreshed', expiry });
+    return NextResponse.json({ ok: false, status: 'refresh_failed', message: json?.results?.[0]?.error || 'Renouvellement échoué', cronResult: json });
+  } catch (e) {
+    return NextResponse.json({ ok: false, status: 'error', message: e.message });
+  }
+}

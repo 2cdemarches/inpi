@@ -71,38 +71,44 @@ function Badge({ label, color = 'slate', dot = false }) {
 
 // ── INPI Connection Status ────────────────────────────────────────────────────
 function InpiConnectionStatus() {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult]   = useState(null);
+  const [loading, setLoading]     = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [result, setResult]       = useState(null);
 
   async function check() {
     setLoading(true); setResult(null);
     const r = await fetch('/api/inpi-check').then(x => x.json()).catch(e => ({ ok: false, message: e.message }));
     setResult(r); setLoading(false);
   }
+  async function forceRefresh() {
+    setRefreshing(true);
+    const r = await fetch('/api/inpi-check', { method: 'POST' }).then(x => x.json()).catch(e => ({ ok: false, message: e.message }));
+    setResult(r); setRefreshing(false);
+  }
 
-  const statusColor = result?.ok
-    ? 'bg-green-50 border-green-200 text-green-800'
-    : result
-    ? 'bg-red-50 border-red-200 text-red-700'
-    : 'bg-slate-50 border-slate-200 text-slate-600';
-
-  const statusIcon = result?.ok ? '✅' : result ? '❌' : null;
-  const statusLabel = result?.ok
-    ? `Connecté${result.expiry ? ` — expire le ${result.expiry}` : ''}`
-    : result?.message ?? null;
+  const isExpired = result && !result.ok && (result.status === 'expired' || result.status === 'invalid');
 
   return (
     <div className="space-y-2">
-      <button onClick={check} disabled={loading}
-        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50">
-        {loading ? 'Vérification…' : 'Tester la connexion INPI'}
-      </button>
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={check} disabled={loading || refreshing}
+          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50">
+          {loading ? 'Vérification…' : 'Tester la connexion INPI'}
+        </button>
+        {isExpired && (
+          <button onClick={forceRefresh} disabled={loading || refreshing}
+            className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 disabled:opacity-50">
+            {refreshing ? 'Renouvellement…' : 'Renouveler maintenant'}
+          </button>
+        )}
+      </div>
       {result !== null && (
-        <div className={`rounded-lg p-2 text-xs border ${statusColor}`}>
-          {statusIcon && <span className="mr-1">{statusIcon}</span>}
-          {statusLabel}
-          {!result.ok && result.hasRefresh && (
-            <p className="mt-1 text-amber-700">Un REFRESH_TOKEN est disponible — la reconnexion automatique devrait fonctionner au prochain CRON.</p>
+        <div className={`rounded-lg p-2 text-xs border ${result.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          {result.ok
+            ? `Connecté${result.expiry ? ` — expire le ${result.expiry}` : ''}${result.status === 'refreshed' ? ' (token renouvelé)' : ''}`
+            : result.message}
+          {!result.ok && result.hasRefresh && result.status === 'expired' && (
+            <p className="mt-1 text-amber-700">Cliquez "Renouveler maintenant" pour rétablir la connexion immédiatement.</p>
           )}
           {!result.ok && !result.hasRefresh && (
             <p className="mt-1 font-semibold">Renseignez le REFRESH_TOKEN ci-dessous pour rétablir la connexion.</p>
