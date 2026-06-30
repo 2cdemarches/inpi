@@ -293,17 +293,21 @@ export default function Dashboard() {
   useEffect(() => { loadSignRequests(); }, [loadSignRequests]);
 
   // Chargement INPI unique pour tous les clients
+  const [inpiError, setInpiError] = useState(null);
   const loadInpi = useCallback(() => {
-    setInpiLoading(true);
+    setInpiLoading(true); setInpiError(null);
     fetch('/api/inpi-auth')
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
           setInpiData(d);
+          setInpiError(null);
           try { localStorage.setItem('inpi_cache', JSON.stringify(d)); } catch {}
+        } else {
+          setInpiError(d.error || 'Erreur INPI');
         }
       })
-      .catch(() => {})
+      .catch(e => setInpiError(e.message))
       .finally(() => setInpiLoading(false));
   }, []);
   useEffect(() => { loadInpi(); }, [loadInpi]);
@@ -478,12 +482,20 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-2">
             <a href="/signature" className="px-3 py-2 text-sm text-blue-600 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 font-medium">✍️ Signatures</a>
+            {inpiError && (
+              <span className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-100 flex items-center gap-1">
+                ⚠️ {inpiError}
+                <button onClick={loadInpi} className="underline ml-1 hover:text-red-800">Réessayer</button>
+              </span>
+            )}
             <button
               onClick={syncInpi}
               disabled={syncing || inpiLoading || !inpiData?.formalites?.length}
-              title={!inpiData ? 'Données INPI non chargées' : `${inpiData.formalites.length} formalités disponibles`}
+              title={inpiError ? inpiError : !inpiData ? 'Chargement…' : `${inpiData.formalites.length} formalités disponibles`}
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-xl hover:bg-orange-100 font-medium disabled:opacity-40">
-              {syncing
+              {inpiLoading
+                ? <><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Chargement…</>
+                : syncing
                 ? <><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Sync…</>
                 : '🏛️ Sync INPI'}
             </button>
