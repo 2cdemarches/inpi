@@ -233,8 +233,9 @@ async function storeTokens(sb, userId, bearer, refresh) {
 
 // ── Route GET /api/cron/inpi-refresh ─────────────────────────────────────────
 export async function GET(req) {
-  const secret = req.headers.get('x-cron-secret') || new URL(req.url).searchParams.get('secret');
-  if (secret !== process.env.CRON_SECRET) {
+  const authHeader = req.headers.get('authorization') || '';
+  const secret = authHeader.replace('Bearer ', '') || req.headers.get('x-cron-secret') || new URL(req.url).searchParams.get('secret');
+  if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
