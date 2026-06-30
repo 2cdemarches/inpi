@@ -75,11 +75,7 @@ export async function GET() {
     const hasRefresh = !!s.inpi_refresh_token;
 
     if (valid) {
-      const res = await fetch(`${GU}/api/formalities?page=1&pageSize=1`, {
-        headers: { Accept: 'application/json', 'User-Agent': UA, FromFO: '1', Cookie: `BEARER=${s.inpi_bearer}` },
-      });
-      if (res.ok) return NextResponse.json({ ok: true, status: 'connected', expiry, hasRefresh });
-      return NextResponse.json({ ok: false, status: 'invalid', message: "Token rejeté par l'INPI", expiry, hasRefresh });
+      return NextResponse.json({ ok: true, status: 'connected', expiry, hasRefresh });
     }
 
     return NextResponse.json({ ok: false, status: 'expired', message: `Token expiré (${expiry})`, expiry, hasRefresh });
