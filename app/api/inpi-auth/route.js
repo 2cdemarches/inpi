@@ -103,19 +103,21 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
     }
 
-    let bearer = jwtIsValid(storedBearer) ? storedBearer : null;
+    // Utiliser le token s'il est valide (marge 0 : on l'utilise jusqu'à la dernière seconde)
+    let bearer = jwtIsValid(storedBearer, 0) ? storedBearer : null;
 
-    // Si expiré, renouveler via refresh token
+    // Vraiment expiré → tenter le refresh
     if (!bearer) {
-      if (!refreshToken) {
+      if (refreshToken) {
+        const renewed = await refreshBearer(storedBearer, refreshToken);
+        if (renewed && renewed.bearer !== 'deleted' && jwtIsValid(renewed.bearer, 0)) {
+          bearer = renewed.bearer;
+          await saveTokens(user.id, bearer, renewed.refresh);
+        }
+      }
+      if (!bearer) {
         return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
       }
-      const renewed = await refreshBearer(storedBearer, refreshToken);
-      if (!renewed || renewed.bearer === 'deleted' || !jwtIsValid(renewed.bearer, 0)) {
-        return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
-      }
-      bearer = renewed.bearer;
-      await saveTokens(user.id, bearer, renewed.refresh);
     }
 
     // 3. Récupérer les formalités
