@@ -252,7 +252,8 @@ export async function GET(req) {
 
   for (const s of allSettings) {
     const { user_id, inpi_bearer, inpi_refresh_token, inpi_email, inpi_password, inpi_incap_cookie } = s;
-    if (!inpi_email || !inpi_password) continue;
+    // Sans email+password ET sans refresh token, rien à faire
+    if (!inpi_refresh_token && (!inpi_email || !inpi_password)) continue;
 
     const expiresIn = inpi_bearer ? jwtExpiresInMin(inpi_bearer) : null;
 
@@ -276,8 +277,8 @@ export async function GET(req) {
         }
       }
 
-      // Priorité 2 : login complet via SSO (peut être bloqué par WAF)
-      if (!tokens) {
+      // Priorité 2 : login complet via SSO (seulement si email+password dispo)
+      if (!tokens && inpi_email && inpi_password) {
         tokens = await fullLogin(inpi_email, inpi_password, inpi_incap_cookie || '');
         method = 'full_login';
       }
