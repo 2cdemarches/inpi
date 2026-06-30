@@ -30,11 +30,11 @@ export async function GET() {
   try {
     const user = await requireUser();
     const sb = adminSb();
-    const { data: s } = await sb.from('settings').select('gmail_user, gmail_app_password').eq('user_id', user.id).single();
+    const { data: s } = await sb.from('settings').select('gmail_user, gmail_app_password, imap_host').eq('user_id', user.id).single();
     if (!s?.gmail_user || !s?.gmail_app_password)
       return NextResponse.json({ ok: false, error: 'Adresse email ou mot de passe non configuré' });
 
-    const host = imapHost(s.gmail_user);
+    const host = s.imap_host?.trim() || imapHost(s.gmail_user);
     const imap = new ImapFlow({ host, port: 993, secure: true, auth: { user: s.gmail_user, pass: s.gmail_app_password }, logger: false });
     await imap.connect();
     await imap.mailboxOpen('INBOX');

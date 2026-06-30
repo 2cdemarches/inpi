@@ -725,18 +725,13 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Messagerie Gmail */}
+              {/* Messagerie */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Messagerie (envoi des emails)</h3>
-                {settings.gmail_user && (
-                  <div className="flex items-center gap-2 p-2.5 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
-                    <span>✅</span><span>Configuré : <strong>{settings.gmail_user}</strong></span>
-                  </div>
-                )}
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Adresse Gmail</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Adresse email</label>
                   <input type="email" value={settings.gmail_user || ''} onChange={e => setSettings(s => ({ ...s, gmail_user: e.target.value }))}
-                    placeholder="contact@gmail.com"
+                    placeholder="contact@cabinet.fr"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
                 <div>
@@ -744,9 +739,14 @@ export default function Dashboard() {
                   <input type="password" value={settings.gmail_app_password || ''} onChange={e => setSettings(s => ({ ...s, gmail_app_password: e.target.value }))}
                     placeholder="••••••••"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  <p className="text-xs text-slate-400 mt-1">
-                    Gmail uniquement : utilisez un <a href="https://myaccount.google.com/apppasswords" target="_blank" className="underline">mot de passe d'application</a> (pas votre mot de passe habituel). Ionos/Outlook : mot de passe normal.
-                  </p>
+                  <p className="text-xs text-slate-400 mt-1">Gmail : <a href="https://myaccount.google.com/apppasswords" target="_blank" className="underline">mot de passe d'application</a>. Autres : mot de passe normal.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Serveur IMAP <span className="text-slate-400 font-normal">(optionnel — détecté automatiquement si vide)</span></label>
+                  <input type="text" value={settings.imap_host || ''} onChange={e => setSettings(s => ({ ...s, imap_host: e.target.value }))}
+                    placeholder="ex : imap.ionos.fr  ou  mail.cabinet.fr"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  <p className="text-xs text-slate-400 mt-1">Automatique : @gmail.com → imap.gmail.com · @ionos.fr → imap.ionos.com · @outlook.com → outlook.office365.com</p>
                 </div>
               </div>
 

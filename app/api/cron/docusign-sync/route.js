@@ -25,11 +25,11 @@ function imapHost(email) {
   return 'imap.gmail.com'; // défaut
 }
 
-async function processUser(sb, { user_id, gmail_user, gmail_app_password }) {
+async function processUser(sb, { user_id, gmail_user, gmail_app_password, imap_host }) {
   const result = { signed: 0, sent: 0, errors: [] };
 
   const client = new ImapFlow({
-    host:   imapHost(gmail_user),
+    host:   imap_host?.trim() || imapHost(gmail_user),
     port:   993,
     secure: true,
     auth:   { user: gmail_user, pass: gmail_app_password },
@@ -120,7 +120,7 @@ export async function GET(req) {
 
   const { data: allSettings } = await sb
     .from('settings')
-    .select('user_id, gmail_user, gmail_app_password')
+    .select('user_id, gmail_user, gmail_app_password, imap_host')
     .not('gmail_user', 'is', null)
     .not('gmail_app_password', 'is', null);
 
