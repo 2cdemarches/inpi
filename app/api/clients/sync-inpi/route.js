@@ -37,15 +37,13 @@ export async function POST(req) {
       const denom = (f.denomination ?? '').trim();
       if (!fId && !denom) { results.skipped++; continue; }
 
-      // 1. Client déjà lié à cette formalité
+      // 1. Client déjà lié à cette formalité → mettre à jour statut + siren
       const byId = fId ? existingClients.find(c => c.inpi_formalite_id === fId) : null;
       if (byId) {
-        if (f.siren && byId.siren !== f.siren) {
-          await sb.from('clients').update({ siren: f.siren, updated_at: new Date().toISOString() }).eq('id', byId.id);
-          results.updated++;
-        } else {
-          results.skipped++;
-        }
+        const patch = { inpi_statut: f.statut ?? null, updated_at: new Date().toISOString() };
+        if (f.siren && byId.siren !== f.siren) patch.siren = f.siren;
+        await sb.from('clients').update(patch).eq('id', byId.id);
+        results.updated++;
         continue;
       }
 
@@ -58,6 +56,7 @@ export async function POST(req) {
         denomination:       denom || '',
         siren:              f.siren || null,
         inpi_formalite_id:  fId || null,
+        inpi_statut:        f.statut ?? null,
         type_societe,
         // Champs obligatoires en DB — vides pour les imports INPI
         // Champs personnels — vides pour les imports INPI
