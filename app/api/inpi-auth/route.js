@@ -67,52 +67,52 @@ async function refreshBearer(bearer, refreshToken) {
   return null;
 }
 
+function jwtIsValid(token, marginMin = 5) {
+  if (!token || token === 'deleted') return false;
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    return !!payload.exp && payload.exp * 1000 > Date.now() + marginMin * 60 * 1000;
+  } catch { return false; }
+}
+
+async function saveTokens(userId, bearer, refresh) {
+  const sb = adminSb();
+  await storeBearer(userId, bearer, refresh);
+  await sb.from('settings').update({
+    inpi_bearer: bearer,
+    ...(refresh ? { inpi_refresh_token: refresh } : {}),
+  }).eq('user_id', userId);
+}
+
 // ── Route GET /api/inpi-auth ──────────────────────────────────────────────────
 export async function GET() {
   try {
     const user = await requireUser();
-    const sb = await createSupabaseServer();
 
-    // Lire BEARER + REFRESH_TOKEN depuis settings
-    const { data: settings } = await sb.from('settings')
+    // Lire BEARER + REFRESH_TOKEN depuis settings (adminSb pour fiabilité)
+    const { data: settings } = await adminSb().from('settings')
       .select('inpi_bearer,inpi_refresh_token').eq('user_id', user.id).single();
 
-    const storedBearer  = (settings?.inpi_bearer        || '').trim() || null;
-    const refreshToken  = (settings?.inpi_refresh_token || '').trim() || null;
+    const storedBearer = (settings?.inpi_bearer        || '').trim() || null;
+    const refreshToken = (settings?.inpi_refresh_token || '').trim() || null;
 
     if (!refreshToken && !storedBearer) {
       return NextResponse.json({ ok: false, error: 'TOKEN_MISSING' }, { status: 401 });
     }
 
-    // 1. Vérifier si le bearer stocké est encore valide (décoder le JWT directement)
-    //    Ne JAMAIS appeler /api/user/logged si le bearer est encore valide —
-    //    INPI détecte l'appel serveur et retourne BEARER=deleted, invalidant la session.
-    function jwtIsValid(token, marginMin = 5) {
-      if (!token || token === 'deleted') return false;
-      try {
-        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
-        return !!payload.exp && payload.exp * 1000 > Date.now() + marginMin * 60 * 1000;
-      } catch { return false; }
-    }
-
     let bearer = jwtIsValid(storedBearer) ? storedBearer : null;
 
-    // 2. Si expiré, renouveler via /api/user/logged (seulement si vraiment nécessaire)
+    // Si expiré, renouveler via refresh token
     if (!bearer) {
       if (!refreshToken) {
         return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
       }
       const renewed = await refreshBearer(storedBearer, refreshToken);
-      // Ignorer "deleted" — INPI invalide la session si appelé depuis un serveur
       if (!renewed || renewed.bearer === 'deleted' || !jwtIsValid(renewed.bearer, 0)) {
         return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
       }
       bearer = renewed.bearer;
-      await storeBearer(user.id, bearer, renewed.refresh);
-      await sb.from('settings').update({
-        inpi_bearer: bearer,
-        ...(renewed.refresh ? { inpi_refresh_token: renewed.refresh } : {}),
-      }).eq('user_id', user.id);
+      await saveTokens(user.id, bearer, renewed.refresh);
     }
 
     // 3. Récupérer les formalités
@@ -126,23 +126,20 @@ export async function GET() {
     ].map(s => `status%5B%5D=${s}`).join('&');
 
     let formalites = [];
+    let currentRefresh = refreshToken;
     for (let page = 1; page <= 20; page++) {
       const res = await fetch(
         `${GU}/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`,
-        { headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, 'FromFO': '1', Cookie: `BEARER=${bearer}; REFRESH_TOKEN=${refreshToken}` } }
+        { headers: { Accept: 'application/ld+json, application/json', 'User-Agent': UA, 'FromFO': '1', Cookie: `BEARER=${bearer}; REFRESH_TOKEN=${currentRefresh}` } }
       );
 
       if (res.status === 401) {
-        // Renouveler et retenter
-        const renewed = await refreshBearer(bearer, refreshToken);
+        const renewed = await refreshBearer(bearer, currentRefresh);
         if (!renewed) return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
         bearer = renewed.bearer;
-        await storeBearer(user.id, bearer, renewed.refresh);
-        await sb.from('settings').update({
-          inpi_bearer: bearer,
-          ...(renewed.refresh ? { inpi_refresh_token: renewed.refresh } : {}),
-        }).eq('user_id', user.id);
-        continue; // retenter la même page
+        currentRefresh = renewed.refresh || currentRefresh;
+        await saveTokens(user.id, bearer, currentRefresh);
+        continue;
       }
 
       if (!res.ok) throw new Error(`GU API ${res.status}`);
