@@ -84,6 +84,7 @@ export async function POST(req) {
         nom:                '',
         civilite:           'Monsieur',
         nationalite:        'Française',
+        date_naissance:     '',
         adresse:            '',
         siege_social:       '',
         capital:            0,
