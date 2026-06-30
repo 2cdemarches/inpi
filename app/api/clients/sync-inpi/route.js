@@ -81,7 +81,7 @@ export async function POST(req) {
         type_societe:       typeMap[f.type] || 'SASU',
         // Champs obligatoires en DB — vides pour les imports INPI
         // Champs personnels — vides pour les imports INPI
-        civilite:              'Monsieur',
+        civilite:              '',
         prenom:                '',
         nom:                   '',
         date_naissance:        '',

@@ -162,7 +162,6 @@ export default function Dashboard() {
   const [signRequests, setSignRequests]     = useState([]);
   const [syncing, setSyncing]               = useState(false);
   const [syncResult, setSyncResult]         = useState(null);
-  const [showInpiOnly, setShowInpiOnly]     = useState(false);
 
   const loadClients = useCallback(async () => {
     setLoading(true);
@@ -315,16 +314,7 @@ export default function Dashboard() {
   }
 
   const types = ['tous', ...TYPES_SOCIETE];
-  // Un "vrai client" a un prénom ou nom renseigné (pas importé depuis INPI uniquement)
-  const isRealClient = c => !!(c.prenom?.trim() || c.nom?.trim());
-
   const filtered = clients.filter(c => {
-    // Filtre vue : clients cabinet OU formalités INPI
-    if (showInpiOnly) {
-      if (isRealClient(c)) return false;
-    } else {
-      if (!isRealClient(c)) return false;
-    }
     const matchSearch = !search ||
       c.denomination?.toLowerCase().includes(search.toLowerCase()) ||
       c.nom?.toLowerCase().includes(search.toLowerCase()) ||
@@ -346,7 +336,7 @@ export default function Dashboard() {
             </div>
             <div>
               <p className="font-bold text-slate-900 leading-none">Formalités</p>
-              <p className="text-xs text-slate-400">{clients.filter(isRealClient).length} client{clients.filter(isRealClient).length !== 1 ? 's' : ''} · {clients.filter(c => !isRealClient(c)).length} INPI</p>
+              <p className="text-xs text-slate-400">{clients.length} client{clients.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
 
@@ -392,19 +382,6 @@ export default function Dashboard() {
         <div className={`flex flex-col ${selected ? 'w-1/2' : 'w-full'} border-r border-slate-100`}>
           {/* Filtres */}
           <div className="p-4 bg-white border-b border-slate-100 flex gap-2 flex-wrap">
-            {/* Toggle Clients cabinet / Formalités INPI */}
-            <div className="flex rounded-xl border border-slate-200 overflow-hidden flex-shrink-0">
-              <button
-                onClick={() => setShowInpiOnly(false)}
-                className={`px-3 py-2 text-sm font-medium transition-colors ${!showInpiOnly ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
-                👤 Mes clients ({clients.filter(isRealClient).length})
-              </button>
-              <button
-                onClick={() => setShowInpiOnly(true)}
-                className={`px-3 py-2 text-sm font-medium transition-colors ${showInpiOnly ? 'bg-orange-500 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
-                🏛️ INPI ({clients.filter(c => !isRealClient(c)).length})
-              </button>
-            </div>
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Rechercher…"
               className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 flex-1 min-w-40" />
@@ -437,7 +414,9 @@ export default function Dashboard() {
                   {/* Nom + client */}
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-slate-800 leading-tight truncate">{client.denomination}</p>
-                    <p className="text-xs text-slate-400 truncate">{client.civilite} {client.prenom} {client.nom}</p>
+                    {(client.prenom?.trim() || client.nom?.trim()) && (
+                      <p className="text-xs text-slate-400 truncate">{client.civilite} {client.prenom} {client.nom}</p>
+                    )}
                   </div>
 
                   {/* Grille statuts */}
