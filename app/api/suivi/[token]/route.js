@@ -173,15 +173,12 @@ export async function GET(request, { params }) {
 function buildTimeline(client, lastSign, statuts, inpiStatut = null) {
   const steps = [];
 
-  // 1. Documents créés / modifiés
-  const hasDocs = statuts.some(s =>
-    ['Pièces reçues','Envoyé pour signature','Signé','Déposé INPI','Immatriculé','Dossier clôturé'].includes(s.label)
-  ) || !!client.date_signature || !!lastSign;
+  // 1. Documents créés / modifiés — toujours terminé (le dossier existe)
   steps.push({
     id:    'documents',
     label: 'Documents créés',
-    desc:  hasDocs ? 'Les statuts et documents constitutifs ont été préparés.' : 'Préparation des statuts et documents constitutifs.',
-    done:  hasDocs,
+    desc:  'Les statuts et documents constitutifs ont été préparés.',
+    done:  true,
     date:  client.created_at ? new Date(client.created_at).toLocaleDateString('fr-FR') : null,
     icon:  'document',
   });

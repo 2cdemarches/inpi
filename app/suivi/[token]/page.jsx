@@ -138,7 +138,8 @@ export default function SuiviPage({ params }) {
   // Calculer la progression
   const steps       = data?.steps || [];
   const doneCount   = steps.filter(s => s.done).length;
-  const progress    = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
+  const pendingCount = steps.filter(s => s.pending && !s.done).length;
+  const progress    = steps.length ? Math.round(((doneCount + pendingCount * 0.5) / steps.length) * 100) : 0;
   const currentStep = steps.find(s => s.pending) ?? steps.filter(s => !s.done)[0] ?? null;
   const inpi        = data?.inpi ?? null;
 
