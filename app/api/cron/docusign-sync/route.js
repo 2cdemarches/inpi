@@ -86,15 +86,15 @@ async function processUser(sb, { user_id, gmail_user, gmail_app_password }) {
           await sb.from('signature_requests').update({ status: 'signed', signed_at: dateIso }).eq('id', existing.id);
         } else {
           await sb.from('signature_requests').insert({
-            client_id: match.id, status: 'signed', signed_at: dateIso,
-            source: 'docusign', expires_at: dateIso, documents: [], created_at: dateIso,
+            user_id: s.user_id, client_id: match.id, status: 'signed', signed_at: dateIso,
+            expires_at: dateIso, documents: [], created_at: dateIso,
           });
         }
         result.signed++;
       } else {
         if (!existing || existing.status === 'signed') {
           await sb.from('signature_requests').insert({
-            client_id: match.id, status: 'pending', source: 'docusign',
+            user_id: s.user_id, client_id: match.id, status: 'pending',
             expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
             documents: [], created_at: dateIso,
           });

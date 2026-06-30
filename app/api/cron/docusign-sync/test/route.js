@@ -61,6 +61,7 @@ export async function POST() {
       return NextResponse.json({ ok: false, error: 'Adresse email ou mot de passe non configuré' });
 
     const { data: clients } = await sb.from('clients').select('id, denomination').eq('user_id', user.id);
+    const userId = user.id;
 
     const host = imapHost(s.gmail_user);
     const imap = new ImapFlow({ host, port: 993, secure: true, auth: { user: s.gmail_user, pass: s.gmail_app_password }, logger: false });
@@ -96,13 +97,13 @@ export async function POST() {
           const { error: e } = await sb.from('signature_requests').update({ status: 'signed', signed_at: dateIso }).eq('id', existing.id);
           if (e) { result.errors.push(`${match.denomination || match.id}: ${e.message}`); continue; }
         } else {
-          const { error: e } = await sb.from('signature_requests').insert({ client_id: match.id, status: 'signed', signed_at: dateIso, expires_at: dateIso, documents: [], created_at: dateIso });
+          const { error: e } = await sb.from('signature_requests').insert({ user_id: userId, client_id: match.id, status: 'signed', signed_at: dateIso, expires_at: dateIso, documents: [], created_at: dateIso });
           if (e) { result.errors.push(`${match.denomination || match.id}: ${e.message}`); continue; }
         }
         result.signed++;
       } else {
         if (existing && existing.status !== 'signed') { result.skipped++; continue; } // pending déjà présent
-        const { error: e } = await sb.from('signature_requests').insert({ client_id: match.id, status: 'pending', expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), documents: [], created_at: dateIso });
+        const { error: e } = await sb.from('signature_requests').insert({ user_id: userId, client_id: match.id, status: 'pending', expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), documents: [], created_at: dateIso });
         if (e) { result.errors.push(`${match.denomination || match.id}: ${e.message}`); continue; }
         result.sent++;
       }

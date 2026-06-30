@@ -70,7 +70,7 @@ function Badge({ label, color = 'slate', dot = false }) {
 }
 
 // ── Spinner ───────────────────────────────────────────────────────────────────
-function TestDocuSign() {
+function TestDocuSign({ onSynced }) {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [result, setResult]   = useState(null);
@@ -84,6 +84,7 @@ function TestDocuSign() {
     setSyncing(true); setResult(null);
     const r = await fetch('/api/cron/docusign-sync/test', { method: 'POST' }).then(x => x.json());
     setResult({ mode: 'sync', ...r }); setSyncing(false);
+    if (r.ok) onSynced?.();
   }
 
   return (
@@ -235,9 +236,10 @@ export default function Dashboard() {
 
   useEffect(() => { loadClients(); }, [loadClients]);
 
-  useEffect(() => {
+  const loadSignRequests = useCallback(() => {
     fetch('/api/sign').then(r => r.json()).then(d => setSignRequests(d.requests || [])).catch(() => {});
   }, []);
+  useEffect(() => { loadSignRequests(); }, [loadSignRequests]);
 
   // Chargement INPI unique pour tous les clients
   useEffect(() => {
@@ -758,7 +760,7 @@ export default function Dashboard() {
                     <p>Les emails DocuSign reçus sur <strong>{settings.gmail_user || 'votre adresse email'}</strong> seront détectés automatiquement toutes les 30 minutes.</p>
                     {!settings.gmail_user
                       ? <p className="text-amber-700 font-medium">⚠️ Configurez d'abord votre adresse email ci-dessous.</p>
-                      : <TestDocuSign />
+                      : <TestDocuSign onSynced={loadSignRequests} />
                     }
                   </div>
                 )}
