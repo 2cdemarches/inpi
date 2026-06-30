@@ -91,14 +91,17 @@ export async function POST() {
 
       if (parsed.signed) {
         if (existing?.id) {
-          await sb.from('signature_requests').update({ status: 'signed', signed_at: dateIso }).eq('id', existing.id);
+          const { error: e } = await sb.from('signature_requests').update({ status: 'signed', signed_at: dateIso }).eq('id', existing.id);
+          if (e) { result.errors.push(`update signed ${match.id}: ${e.message}`); continue; }
         } else {
-          await sb.from('signature_requests').insert({ client_id: match.id, status: 'signed', signed_at: dateIso, source: 'docusign', expires_at: dateIso, documents: [], created_at: dateIso });
+          const { error: e } = await sb.from('signature_requests').insert({ client_id: match.id, status: 'signed', signed_at: dateIso, expires_at: dateIso, documents: [], created_at: dateIso });
+          if (e) { result.errors.push(`insert signed ${match.id}: ${e.message}`); continue; }
         }
         result.signed++;
       } else {
         if (!existing || existing.status === 'signed') {
-          await sb.from('signature_requests').insert({ client_id: match.id, status: 'pending', source: 'docusign', expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), documents: [], created_at: dateIso });
+          const { error: e } = await sb.from('signature_requests').insert({ client_id: match.id, status: 'pending', expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), documents: [], created_at: dateIso });
+          if (e) { result.errors.push(`insert pending ${match.id}: ${e.message}`); continue; }
           result.sent++;
         }
       }

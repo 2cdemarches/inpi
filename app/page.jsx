@@ -117,6 +117,7 @@ function TestDocuSign() {
               {result.signed > 0 && <p>✍️ {result.signed} signé(s)</p>}
               {result.sent   > 0 && <p>📤 {result.sent} envoi(s) détecté(s)</p>}
               {result.not_found?.length > 0 && <p className="text-amber-700">⚠️ Clients introuvables : {result.not_found.join(', ')}</p>}
+              {result.errors?.length > 0 && <p className="text-red-700">❌ Erreurs : {result.errors.join(' | ')}</p>}
             </>
           ) : <p>❌ {result.error}</p>}
         </div>
