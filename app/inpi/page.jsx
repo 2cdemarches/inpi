@@ -143,19 +143,43 @@ export default function InpiPage() {
           <div className="space-y-2">
             {filtered.length === 0 && <p className="text-center text-slate-400 py-10 text-sm">Aucun résultat</p>}
             {filtered.map((f, i) => (
-              <div key={f.id ?? i} className="bg-white border border-slate-100 rounded-2xl px-4 py-3 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-semibold text-slate-800 truncate">{f.denomination || '—'}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {f.siren && <span className="mr-3">SIREN {f.siren}</span>}
-                    {f.type && <span className="mr-3">{f.type}</span>}
-                    {f.date_depot && <span>{new Date(f.date_depot).toLocaleDateString('fr-FR')}</span>}
-                  </p>
-                  {f.commentaire && <p className="text-xs text-slate-400 mt-1 italic truncate">{f.commentaire}</p>}
+              <div key={f.id ?? i} className="bg-white border border-slate-100 rounded-2xl px-4 py-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-800 truncate">{f.denomination || '—'}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {f.siren && <span className="mr-3">SIREN {f.siren}</span>}
+                      {f.type && <span className="mr-3 font-medium text-slate-500">{f.type}</span>}
+                      {f.date_depot && <span>{new Date(f.date_depot).toLocaleDateString('fr-FR')}</span>}
+                    </p>
+                    {f.commentaire && <p className="text-xs text-red-400 mt-1 italic truncate">{f.commentaire}</p>}
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Badge label={f.statut_label} color={f.statut_color} />
+                  </div>
                 </div>
-                <div className="flex-shrink-0">
-                  <Badge label={f.statut_label} color={f.statut_color} />
-                </div>
+                {f.etapes?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {f.etapes.map((e, j) => (
+                      <div key={j} className="flex items-center gap-1.5 text-xs bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                          e.statut_color === 'green'  ? 'bg-green-500' :
+                          e.statut_color === 'red'    ? 'bg-red-500' :
+                          e.statut_color === 'amber'  ? 'bg-amber-500' :
+                          e.statut_color === 'blue'   ? 'bg-blue-400' : 'bg-slate-300'
+                        }`} />
+                        <span className="text-slate-500">{e.organisme || `Étape ${e.numero}`}</span>
+                        <span className="text-slate-400">·</span>
+                        <span className={`font-medium ${
+                          e.statut_color === 'green' ? 'text-green-600' :
+                          e.statut_color === 'red'   ? 'text-red-500' :
+                          e.statut_color === 'amber' ? 'text-amber-600' : 'text-slate-500'
+                        }`}>{e.statut_label}</span>
+                        {e.motif_rejet && <span className="text-red-400 italic ml-1">— {e.motif_rejet}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

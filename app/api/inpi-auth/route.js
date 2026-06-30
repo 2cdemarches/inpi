@@ -199,7 +199,15 @@ function buildList(raw) {
     date_depot:   f.createdAt ?? f.created ?? f.dateDepot,
     date_modif:   f.updatedAt ?? f.statusDate ?? f.dateModification,
     commentaire:  f.commentaire ?? f.motifRejet ?? null,
-    _debug_validations: f.validationsRequests ?? null,
+    etapes: (f.validationsRequests ?? []).map(v => ({
+      numero:       v.validationNumber,
+      statut:       v.status,
+      statut_label: labelStatut(v.status),
+      statut_color: colorStatut(v.status),
+      organisme:    v.partnerCenter?.name ?? v.partner?.denomination ?? null,
+      motif_rejet:  v.rejectionReasons ?? null,
+      date:         v.statusDate ?? null,
+    })),
   }));
 }
 
