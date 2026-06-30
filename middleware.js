@@ -30,7 +30,12 @@ export async function middleware(request) {
   }
 
   // Portail de suivi client — accès sans connexion
-  if (pathname.startsWith('/suivi') || pathname.startsWith('/api/suivi')) {
+  if (
+    pathname.startsWith('/suivi') ||
+    pathname.startsWith('/api/suivi') ||
+    pathname.startsWith('/inpi/suivi') ||
+    pathname.startsWith('/api/inpi/formalite')
+  ) {
     return response;
   }
 
