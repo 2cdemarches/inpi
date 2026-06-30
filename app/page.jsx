@@ -636,6 +636,19 @@ export default function Dashboard() {
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    REFRESH_TOKEN <span className="text-slate-400 font-normal">(renouvellement automatique)</span>
+                  </label>
+                  <p className="text-xs text-slate-400 mb-1">F12 → Application → Cookies → guichet-unique.inpi.fr → <strong>REFRESH_TOKEN</strong></p>
+                  <input
+                    type="password"
+                    value={settings.inpi_refresh_token || ''}
+                    onChange={e => setSettings(s => ({ ...s, inpi_refresh_token: e.target.value }))}
+                    placeholder="5ba23bb7..."
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
               </div>
 
             </div>
