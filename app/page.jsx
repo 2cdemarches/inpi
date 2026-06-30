@@ -689,68 +689,27 @@ export default function Dashboard() {
               {/* INPI */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI — Guichet Unique</h3>
-
-                {/* Statut renouvellement automatique */}
                 {settings.inpi_email && settings.inpi_password ? (
                   <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800 flex items-start gap-2">
                     <span className="text-base leading-none">✅</span>
-                    <div>
-                      <p className="font-semibold">Connexion automatique active</p>
-                      <p className="text-green-700 mt-0.5">Le serveur se reconnecte automatiquement à l'INPI toutes les heures. Aucune action requise.</p>
-                    </div>
+                    <p className="font-semibold">Connexion automatique active — token renouvelé toutes les heures</p>
                   </div>
                 ) : (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1">
-                    <p className="font-semibold">Renseignez vos identifiants INPI ci-dessous</p>
-                    <p className="text-amber-700">Le serveur se connectera automatiquement et renouvellera le token sans aucune intervention de votre part.</p>
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                    <p className="font-semibold">Renseignez vos identifiants pour activer la connexion automatique</p>
                   </div>
                 )}
-
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Email INPI</label>
-                  <input
-                    type="email"
-                    value={settings.inpi_email || ''}
-                    onChange={e => setSettings(s => ({ ...s, inpi_email: e.target.value }))}
+                  <input type="email" value={settings.inpi_email || ''} onChange={e => setSettings(s => ({ ...s, inpi_email: e.target.value }))}
                     placeholder="m.celnik@2c-expertise.fr"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  />
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe INPI</label>
-                  <input
-                    type="password"
-                    value={settings.inpi_password || ''}
-                    onChange={e => setSettings(s => ({ ...s, inpi_password: e.target.value }))}
+                  <input type="password" value={settings.inpi_password || ''} onChange={e => setSettings(s => ({ ...s, inpi_password: e.target.value }))}
                     placeholder="••••••••"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">
-                    Cookie anti-bot <span className="text-slate-400 font-normal">(une fois par an)</span>
-                  </label>
-                  <p className="text-xs text-slate-400 mb-1">F12 → Application → Cookies → guichet-unique.inpi.fr → <strong>visid_incap_2207353</strong></p>
-                  <input
-                    type="password"
-                    value={settings.inpi_incap_cookie || ''}
-                    onChange={e => setSettings(s => ({ ...s, inpi_incap_cookie: e.target.value }))}
-                    placeholder="naWkijypR1CVhmTax3LrKI..."
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">
-                    REFRESH_TOKEN <span className="text-slate-400 font-normal">(renouvellement automatique)</span>
-                  </label>
-                  <p className="text-xs text-slate-400 mb-1">F12 → Application → Cookies → guichet-unique.inpi.fr → <strong>REFRESH_TOKEN</strong></p>
-                  <input
-                    type="password"
-                    value={settings.inpi_refresh_token || ''}
-                    onChange={e => setSettings(s => ({ ...s, inpi_refresh_token: e.target.value }))}
-                    placeholder="5ba23bb7..."
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  />
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
               </div>
 
