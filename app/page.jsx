@@ -86,7 +86,7 @@ function InpiConnectionStatus() {
     setResult(r); setRefreshing(false);
   }
 
-  const isExpired = result && !result.ok && (result.status === 'expired' || result.status === 'invalid');
+  const isExpired = result && !result.ok && ['expired', 'invalid', 'refresh_failed'].includes(result.status);
 
   return (
     <div className="space-y-2">
