@@ -9,9 +9,8 @@ function adminSb() {
 // POST /api/clients/sync-inpi
 // Body : { formalites: [...] }  — tableau venant de /api/inpi-auth
 // Pour chaque formalité INPI :
-//   1. Si un client a déjà cet inpi_formalite_id → on met à jour siren + inpi_formalite_id
-//   2. Sinon si un client a la même dénomination → on lie (inpi_formalite_id + siren)
-//   3. Sinon → on crée un client minimal avec les données INPI
+//   1. Si un client a déjà cet inpi_formalite_id → on met à jour siren si besoin
+//   2. Sinon → on crée un client par formalité (1 formalité = 1 client)
 export async function POST(req) {
   try {
     const user = await requireUser();
@@ -31,7 +30,7 @@ export async function POST(req) {
 
     if (fetchErr) return NextResponse.json({ ok: false, error: fetchErr.message }, { status: 500 });
 
-    const results = { created: 0, linked: 0, updated: 0, skipped: 0, errors: [] };
+    const results = { created: 0, updated: 0, skipped: 0, errors: [] };
 
     for (const f of formalites) {
       const fId   = String(f.id ?? '');
@@ -50,28 +49,7 @@ export async function POST(req) {
         continue;
       }
 
-      // 2. Client avec même dénomination (correspondance exacte ou partielle)
-      const byDenom = denom
-        ? existingClients.find(c => {
-            const cd = (c.denomination ?? '').trim().toLowerCase();
-            const fd = denom.toLowerCase();
-            return cd === fd || cd.includes(fd) || fd.includes(cd);
-          })
-        : null;
-
-      if (byDenom) {
-        await sb.from('clients').update({
-          inpi_formalite_id: fId || null,
-          ...(f.siren ? { siren: f.siren } : {}),
-          updated_at: new Date().toISOString(),
-        }).eq('id', byDenom.id);
-        // Mettre à jour le cache local
-        byDenom.inpi_formalite_id = fId;
-        results.linked++;
-        continue;
-      }
-
-      // 3. Créer un client minimal depuis la formalité INPI
+      // 2. Créer un client minimal depuis la formalité INPI
       const typeMap = { 'Création': 'SASU', 'Modification': 'SASU', 'Cessation': 'SASU' };
       const { error: insertErr } = await sb.from('clients').insert({
         user_id:            user.id,
@@ -116,7 +94,6 @@ export async function POST(req) {
         results.skipped++;
       } else {
         results.created++;
-        // Ajouter au cache local pour éviter les doublons si même dénomination
         existingClients.push({ id: 'new', denomination: denom, inpi_formalite_id: fId, siren: f.siren });
       }
     }

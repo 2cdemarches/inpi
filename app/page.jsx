@@ -354,7 +354,7 @@ export default function Dashboard() {
             {syncResult && (
               <span className={`text-xs px-2 py-1 rounded-lg font-medium ${syncResult.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
                 {syncResult.ok
-                  ? `+${syncResult.created} créés · ${syncResult.linked} liés · ${syncResult.updated} màj`
+                  ? `+${syncResult.created} créés · ${syncResult.updated} màj · ${syncResult.skipped} ignorés`
                   : syncResult.error}
               </span>
             )}
