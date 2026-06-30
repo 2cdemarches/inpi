@@ -798,6 +798,18 @@ export default function Dashboard() {
                     placeholder="••••••••"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Token INPI <span className="text-slate-400 font-normal">(coller manuellement si connexion auto échoue)</span>
+                  </label>
+                  <textarea
+                    value={settings.inpi_bearer || ''}
+                    onChange={e => setSettings(s => ({ ...s, inpi_bearer: e.target.value.trim() }))}
+                    placeholder="eyJhbGciOiJSUzI1NiJ9..."
+                    rows={3}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
+                  <p className="text-xs text-slate-400 mt-1">F12 → Application → Cookies → guichet-unique.inpi.fr → <strong>BEARER</strong></p>
+                </div>
               </div>
 
             </div>
