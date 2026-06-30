@@ -146,7 +146,8 @@ export default function Dashboard() {
   });
   const [inpiLoading, setInpiLoading] = useState(true);
   const [search, setSearch]         = useState('');
-  const [filterType, setFilterType] = useState('tous');
+  const [filterType, setFilterType]   = useState('tous');
+  const [filterStatut, setFilterStatut] = useState('tous');
   const [showForm, setShowForm]     = useState(false);
   const [editClient, setEditClient] = useState(null);
   const [form, setForm]             = useState(EMPTY_FORM);
@@ -329,7 +330,13 @@ export default function Dashboard() {
         c.nom?.toLowerCase().includes(search.toLowerCase()) ||
         c.prenom?.toLowerCase().includes(search.toLowerCase());
       const matchType = filterType === 'tous' || c.type_societe === filterType;
-      return matchSearch && matchType;
+      const formalite = matchFormalite(c, inpiData?.formalites ?? []);
+      const matchStatut = filterStatut === 'tous'
+        ? true
+        : filterStatut === 'sans'
+          ? !formalite
+          : formalite?.statut_color === filterStatut;
+      return matchSearch && matchType && matchStatut;
     })
     .sort((a, b) => {
       const fa = matchFormalite(a, inpiData?.formalites ?? []);
@@ -404,6 +411,15 @@ export default function Dashboard() {
             <select value={filterType} onChange={e => setFilterType(e.target.value)}
               className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50">
               {types.map(t => <option key={t} value={t}>{t === 'tous' ? 'Tous les types' : t}</option>)}
+            </select>
+            <select value={filterStatut} onChange={e => setFilterStatut(e.target.value)}
+              className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50">
+              <option value="tous">Tous statuts INPI</option>
+              <option value="green">✅ Validée</option>
+              <option value="red">❌ Rejetée</option>
+              <option value="amber">🔄 En régularisation</option>
+              <option value="blue">⏳ En attente</option>
+              <option value="sans">— Sans formalité INPI</option>
             </select>
           </div>
 
