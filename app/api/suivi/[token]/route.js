@@ -68,6 +68,29 @@ async function fetchInpiStatut(dossierId, userId) {
   } catch { return null; }
 }
 
+function labelStatut(s) {
+  const map = {
+    RECEIVED: 'Reçue', PAYMENT_PENDING: 'Paiement en attente',
+    PAYMENT_VALIDATION_PENDING: 'Validation paiement', PAID: 'Payée',
+    SIGNATURE_PENDING: 'Signature en attente', SIGNED: 'Signée',
+    VALIDATION_PENDING: 'En attente de validation', VALIDATED: 'Validée',
+    REJECTED: 'Rejetée', EXPIRED: 'Expirée',
+    AMENDMENT_PENDING: 'Régularisation', AMENDED: 'Régularisée',
+    COMPLIANCE_INSEE_PENDING: 'En cours INSEE', ERROR_VALIDATION: 'Erreur validation',
+    ERROR_DECLARATION_INSEE: 'Erreur INSEE', ERROR_INSEE_EXISTS_PM: 'SIREN déjà existant',
+    VALIDATED_BO_AMENDMENT_SIGNED: 'Validée', VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING: 'Validée',
+  };
+  return map[s] ?? s ?? null;
+}
+function colorStatut(s) {
+  if (!s) return 'slate';
+  if (['VALIDATED','VALIDATED_BO_AMENDMENT_SIGNED','VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING'].includes(s)) return 'green';
+  if (['REJECTED','ERROR_VALIDATION','ERROR_DECLARATION_INSEE','ERROR_INSEE_EXISTS_PM'].includes(s)) return 'red';
+  if (['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED','AMENDMENT_PAYMENT_PENDING',
+       'AMENDMENT_PAYMENT_VALIDATION_PENDING','AMENDMENT_PAID','AMENDED'].includes(s)) return 'amber';
+  return 'blue';
+}
+
 const STATUTS_DEPOT = [
   'RECEIVED','PAYMENT_PENDING','PAYMENT_VALIDATION_PENDING','PAID',
   'SIGNATURE_PENDING','SIGNED','AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING',
@@ -132,6 +155,11 @@ export async function GET(request, { params }) {
         date_signature: client.date_signature,
         created_at:    client.created_at,
       },
+      inpi: inpiStatut ? {
+        statut:       inpiStatut,
+        statut_label: labelStatut(inpiStatut),
+        statut_color: colorStatut(inpiStatut),
+      } : null,
       steps,
       statuts_manuels: statuts,
     });

@@ -117,6 +117,18 @@ export default function SuiviPage({ params }) {
   const doneCount   = steps.filter(s => s.done).length;
   const progress    = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
   const currentStep = steps.find(s => s.pending) ?? steps.filter(s => !s.done)[0] ?? null;
+  const inpi        = data?.inpi ?? null;
+
+  const INPI_COLORS = {
+    green:  'bg-green-50 text-green-700 border-green-200',
+    red:    'bg-red-50 text-red-600 border-red-200',
+    amber:  'bg-amber-50 text-amber-700 border-amber-200',
+    blue:   'bg-blue-50 text-blue-700 border-blue-200',
+    slate:  'bg-slate-50 text-slate-600 border-slate-200',
+  };
+  const INPI_DOTS = {
+    green: 'bg-green-500', red: 'bg-red-500', amber: 'bg-amber-500', blue: 'bg-blue-500', slate: 'bg-slate-400',
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex flex-col">
@@ -168,6 +180,14 @@ export default function SuiviPage({ params }) {
                     {data.client.capital ? ` · ${data.client.capital.toLocaleString('fr-FR')} €` : ''}
                     {data.client.ville_siege ? ` · ${data.client.ville_siege}` : ''}
                   </p>
+                  {inpi && (
+                    <div className="mt-3">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${INPI_COLORS[inpi.statut_color] ?? INPI_COLORS.slate}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${INPI_DOTS[inpi.statut_color] ?? INPI_DOTS.slate}`} />
+                        INPI · {inpi.statut_label}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Barre de progression */}
