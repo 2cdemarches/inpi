@@ -42,31 +42,27 @@ async function storeBearer(userId, bearer, refresh = null) {
 
 // ── Renouveler le BEARER via /api/user/logged ─────────────────────────────────
 async function refreshBearer(bearer, refreshToken) {
-  const cookieStr = [
-    bearer       ? `BEARER=${bearer}`               : '',
-    refreshToken ? `REFRESH_TOKEN=${refreshToken}`  : '',
-  ].filter(Boolean).join('; ');
+  if (!refreshToken) return null;
 
-  const res = await fetch(`${GU}/api/user/logged`, {
+  const res = await fetch(`${GU}/api/token/refresh`, {
+    method: 'POST',
+    redirect: 'manual',
     headers: {
-      'User-Agent': UA,
-      Accept: 'application/json',
-      Referer: `${GU}/`,
-      'FromFO': '1',
-      Cookie: cookieStr,
+      'User-Agent':   UA,
+      'Accept':       'application/json',
+      'Content-Type': 'application/json',
+      'Referer':      `${GU}/`,
+      'Origin':       GU,
+      'FromFO':       '1',
+      'Cookie':       `REFRESH_TOKEN=${refreshToken}`,
     },
+    body: JSON.stringify({ refresh_token: refreshToken }),
   });
 
-  if (!res.ok) return null;
+  if (!res.ok && res.status !== 0) return null;
 
-  // Nouveau BEARER dans Set-Cookie
   const setCookies = parseCookies(getSetCookiesArr(res));
   if (setCookies['BEARER']) return { bearer: setCookies['BEARER'], refresh: setCookies['REFRESH_TOKEN'] ?? refreshToken };
-
-  // Ou dans le body
-  const json = await res.json().catch(() => null);
-  const token = json?.token ?? json?.bearer ?? json?.data?.token;
-  if (token) return { bearer: token, refresh: json?.refresh_token ?? refreshToken };
 
   return null;
 }
