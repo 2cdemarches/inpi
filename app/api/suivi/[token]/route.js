@@ -219,7 +219,7 @@ function buildTimeline(client, lastSign, statuts, inpiStatut = null) {
   });
 
   // 4. En attente de validation INPI (avec sous-étapes)
-  const isDepose   = inpiStatut ? STATUTS_DEPOT.includes(inpiStatut) : statuts.some(s => s.label === 'Déposé INPI');
+  const isDepose   = !!inpiStatut || statuts.some(s => s.label === 'Déposé INPI');
   const isValide   = inpiStatut ? STATUTS_IMMAT.includes(inpiStatut) : statuts.some(s => s.label === 'Immatriculé');
   const isRejete   = inpiStatut ? ['REJECTED','ERROR_VALIDATION','ERROR_DECLARATION_INSEE','ERROR_INSEE_EXISTS_PM'].includes(inpiStatut) : false;
   const isAmend    = inpiStatut ? ['AMENDMENT_PENDING','AMENDMENT_SIGNATURE_PENDING','AMENDMENT_SIGNED',
