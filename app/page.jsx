@@ -70,7 +70,7 @@ function Badge({ label, color = 'slate', dot = false }) {
 }
 
 // ── INPI Connection Status ────────────────────────────────────────────────────
-function InpiConnectionStatus() {
+function InpiConnectionStatus({ onRefreshed }) {
   const [loading, setLoading]     = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [result, setResult]       = useState(null);
@@ -84,6 +84,7 @@ function InpiConnectionStatus() {
     setRefreshing(true);
     const r = await fetch('/api/inpi-check', { method: 'POST' }).then(x => x.json()).catch(e => ({ ok: false, message: e.message }));
     setResult(r); setRefreshing(false);
+    if (r.ok) onRefreshed?.();
   }
 
   const isExpired = result && !result.ok && ['expired', 'invalid', 'refresh_failed'].includes(result.status);
@@ -292,7 +293,7 @@ export default function Dashboard() {
   useEffect(() => { loadSignRequests(); }, [loadSignRequests]);
 
   // Chargement INPI unique pour tous les clients
-  useEffect(() => {
+  const loadInpi = useCallback(() => {
     setInpiLoading(true);
     fetch('/api/inpi-auth')
       .then(r => r.json())
@@ -305,6 +306,7 @@ export default function Dashboard() {
       .catch(() => {})
       .finally(() => setInpiLoading(false));
   }, []);
+  useEffect(() => { loadInpi(); }, [loadInpi]);
 
   const loadModeles = useCallback(async () => {
     const res = await fetch('/api/modeles');
@@ -826,7 +828,7 @@ export default function Dashboard() {
               {/* INPI */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI — Guichet Unique</h3>
-                <InpiConnectionStatus />
+                <InpiConnectionStatus onRefreshed={loadInpi} />
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Email INPI</label>
                   <input type="email" value={settings.inpi_email || ''} onChange={e => setSettings(s => ({ ...s, inpi_email: e.target.value }))}
