@@ -674,14 +674,12 @@ export default function Dashboard() {
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe d'application Gmail</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Mot de passe</label>
                   <input type="password" value={settings.gmail_app_password || ''} onChange={e => setSettings(s => ({ ...s, gmail_app_password: e.target.value }))}
-                    placeholder="xxxx xxxx xxxx xxxx"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    placeholder="••••••••"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                   <p className="text-xs text-slate-400 mt-1">
-                    Générez un mot de passe d'application sur{' '}
-                    <a href="https://myaccount.google.com/apppasswords" target="_blank" className="underline">myaccount.google.com/apppasswords</a>
-                    {' '}(pas votre mot de passe habituel).
+                    Gmail uniquement : utilisez un <a href="https://myaccount.google.com/apppasswords" target="_blank" className="underline">mot de passe d'application</a> (pas votre mot de passe habituel). Ionos/Outlook : mot de passe normal.
                   </p>
                 </div>
               </div>
