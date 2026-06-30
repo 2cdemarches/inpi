@@ -59,10 +59,13 @@ async function refreshBearer(bearer, refreshToken) {
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
 
-  if (!res.ok && res.status !== 0) return null;
+  // INPI répond avec un 302 Set-Cookie — ne pas rejeter les redirects
+  if (res.status >= 400) return null;
 
   const setCookies = parseCookies(getSetCookiesArr(res));
-  if (setCookies['BEARER']) return { bearer: setCookies['BEARER'], refresh: setCookies['REFRESH_TOKEN'] ?? refreshToken };
+  if (setCookies['BEARER'] && setCookies['BEARER'] !== 'deleted') {
+    return { bearer: setCookies['BEARER'], refresh: setCookies['REFRESH_TOKEN'] ?? refreshToken };
+  }
 
   return null;
 }
