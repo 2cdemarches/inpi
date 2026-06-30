@@ -314,14 +314,30 @@ export default function Dashboard() {
   }
 
   const types = ['tous', ...TYPES_SOCIETE];
-  const filtered = clients.filter(c => {
-    const matchSearch = !search ||
-      c.denomination?.toLowerCase().includes(search.toLowerCase()) ||
-      c.nom?.toLowerCase().includes(search.toLowerCase()) ||
-      c.prenom?.toLowerCase().includes(search.toLowerCase());
-    const matchType = filterType === 'tous' || c.type_societe === filterType;
-    return matchSearch && matchType;
-  });
+  const STATUT_ORDER = {
+    VALIDATED: 0, VALIDATED_BO_AMENDMENT_SIGNED: 0, VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING: 0,
+    REJECTED: 1, ERROR_VALIDATION: 1, ERROR_DECLARATION_INSEE: 1, ERROR_INSEE_EXISTS_PM: 1,
+    AMENDMENT_PENDING: 2, AMENDMENT_SIGNATURE_PENDING: 2, AMENDMENT_SIGNED: 2,
+    AMENDMENT_PAYMENT_PENDING: 2, AMENDMENT_PAYMENT_VALIDATION_PENDING: 2, AMENDMENT_PAYMENT_PAID: 2, AMENDED: 2,
+    VALIDATION_PENDING: 3, RECEIVED: 3,
+  };
+
+  const filtered = clients
+    .filter(c => {
+      const matchSearch = !search ||
+        c.denomination?.toLowerCase().includes(search.toLowerCase()) ||
+        c.nom?.toLowerCase().includes(search.toLowerCase()) ||
+        c.prenom?.toLowerCase().includes(search.toLowerCase());
+      const matchType = filterType === 'tous' || c.type_societe === filterType;
+      return matchSearch && matchType;
+    })
+    .sort((a, b) => {
+      const fa = matchFormalite(a, inpiData?.formalites ?? []);
+      const fb = matchFormalite(b, inpiData?.formalites ?? []);
+      const oa = fa ? (STATUT_ORDER[fa.statut] ?? 4) : 5;
+      const ob = fb ? (STATUT_ORDER[fb.statut] ?? 4) : 5;
+      return oa - ob || (a.denomination ?? '').localeCompare(b.denomination ?? '');
+    });
 
   return (
     <div className="min-h-screen bg-slate-50">

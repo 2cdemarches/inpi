@@ -193,6 +193,7 @@ function buildList(raw) {
     siren:        f.siren ?? f.companyDetails?.siren ?? f.company?.siren,
     denomination: f.companyName ?? f.denomination ?? f.raisonSociale ?? f.company?.denomination,
     type:         labelTypeFormalite(f.typeFormalite ?? f.formType ?? f.type ?? f.formalityType),
+    forme_juridique: f.formeJuridique ?? f.legalForm ?? f.company?.formeJuridique ?? f.companyDetails?.formeJuridique ?? f.company?.legalForm ?? null,
     statut:       f.status ?? f.statut,
     statut_label: labelStatut(f.status ?? f.statut),
     statut_color: colorStatut(f.status ?? f.statut),

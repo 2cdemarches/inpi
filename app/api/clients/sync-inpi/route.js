@@ -50,13 +50,15 @@ export async function POST(req) {
       }
 
       // 2. Créer un client minimal depuis la formalité INPI
-      const typeMap = { 'Création': 'SASU', 'Modification': 'SASU', 'Cessation': 'SASU' };
+      const FORMES_VALIDES = ['SASU', 'SAS', 'EURL', 'SARL', 'SCI', 'Micro-entreprise'];
+      const formeRaw = (f.forme_juridique ?? '').toUpperCase();
+      const type_societe = FORMES_VALIDES.find(v => formeRaw.includes(v.toUpperCase())) ?? 'SASU';
       const { error: insertErr } = await sb.from('clients').insert({
         user_id:            user.id,
         denomination:       denom || '',
         siren:              f.siren || null,
         inpi_formalite_id:  fId || null,
-        type_societe:       typeMap[f.type] || 'SASU',
+        type_societe,
         // Champs obligatoires en DB — vides pour les imports INPI
         // Champs personnels — vides pour les imports INPI
         civilite:              '',
