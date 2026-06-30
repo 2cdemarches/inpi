@@ -562,13 +562,20 @@ export default function Dashboard() {
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
               {/* Statuts en évidence */}
               <div className="grid grid-cols-2 gap-3">
-                <StatusCard icon="🏛️" title="INPI" color="orange">
+                <StatusCard title="INPI" color="orange">
                   <InpiStatus formalite={matchFormalite(selected, inpiData?.formalites)} loading={inpiLoading && !inpiData} />
                 </StatusCard>
-                <StatusCard icon="📋" title="Suivi" color="indigo">
-                  {(selected.statuts_manuels || []).length > 0
-                    ? <Badge label={selected.statuts_manuels.at(-1).label} color="indigo" dot />
-                    : <span className="text-xs text-slate-400">—</span>}
+                <StatusCard title="Suivi" color="indigo">
+                  {(() => {
+                    const reqs = signRequests.filter(r => r.client_id === selected.id);
+                    const signed  = reqs.find(r => r.status === 'signed');
+                    const pending = reqs.find(r => r.status === 'pending' && new Date(r.expires_at) >= new Date());
+                    if (signed)  return <Badge label="Signé" color="green" dot />;
+                    if (pending) return <Badge label="En attente de signature" color="amber" dot />;
+                    const last = (selected.statuts_manuels || []).at(-1);
+                    if (last)   return <Badge label={last.label} color="indigo" dot />;
+                    return <span className="text-xs text-slate-400">—</span>;
+                  })()}
                 </StatusCard>
               </div>
 
@@ -945,11 +952,11 @@ export default function Dashboard() {
 // ── Helpers UI ────────────────────────────────────────────────────────────────
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50';
 
-function StatusCard({ icon, title, color, children }) {
+function StatusCard({ title, color, children }) {
   const bg = { blue: 'bg-blue-50 border-blue-100', orange: 'bg-orange-50 border-orange-100', indigo: 'bg-indigo-50 border-indigo-100' };
   return (
     <div className={`rounded-xl border p-3 ${bg[color] || 'bg-slate-50 border-slate-100'}`}>
-      <p className="text-xs text-slate-500 mb-2 flex items-center gap-1.5"><span>{icon}</span>{title}</p>
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{title}</p>
       {children}
     </div>
   );
