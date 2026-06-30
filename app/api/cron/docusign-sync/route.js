@@ -17,11 +17,19 @@ function parseSubject(subject) {
   return { denomination: clean, signed: false };
 }
 
+function imapHost(email) {
+  const domain = (email ?? '').split('@')[1]?.toLowerCase() ?? '';
+  if (domain.includes('ionos') || domain.includes('1and1'))  return 'imap.ionos.com';
+  if (domain.includes('outlook') || domain.includes('hotmail') || domain.includes('live')) return 'outlook.office365.com';
+  if (domain.includes('yahoo'))  return 'imap.mail.yahoo.com';
+  return 'imap.gmail.com'; // défaut
+}
+
 async function processUser(sb, { user_id, gmail_user, gmail_app_password }) {
   const result = { signed: 0, sent: 0, errors: [] };
 
   const client = new ImapFlow({
-    host:   'imap.gmail.com',
+    host:   imapHost(gmail_user),
     port:   993,
     secure: true,
     auth:   { user: gmail_user, pass: gmail_app_password },
