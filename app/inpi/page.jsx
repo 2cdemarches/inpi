@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const COLOR = {
   green:  'bg-green-50 text-green-700 border-green-200',
@@ -19,12 +19,114 @@ function Badge({ label, color = 'slate' }) {
   );
 }
 
+const DOT_COLOR = { green: 'bg-green-500', red: 'bg-red-500', amber: 'bg-amber-500', blue: 'bg-blue-500', slate: 'bg-slate-400' };
+
+function EtapeTag({ e }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${DOT_COLOR[e.statut_color] ?? 'bg-slate-300'}`} />
+      <span className="text-slate-500">{e.organisme || `Étape ${e.numero}`}</span>
+      <span className="text-slate-300">·</span>
+      <span className={`font-medium ${
+        e.statut_color === 'green' ? 'text-green-600' :
+        e.statut_color === 'red'   ? 'text-red-500' :
+        e.statut_color === 'amber' ? 'text-amber-600' : 'text-slate-500'
+      }`}>{e.statut_label}</span>
+      {e.motif_rejet && <span className="text-red-400 italic ml-1">— {e.motif_rejet}</span>}
+    </div>
+  );
+}
+
+function FicheModal({ f, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const lienSuivi = `${window.location.origin}/suivi/${f.id}`;
+
+  function copier() {
+    navigator.clipboard.writeText(lienSuivi).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
+          <div>
+            <p className="font-bold text-slate-900 text-lg">{f.denomination}</p>
+            <p className="text-sm text-slate-400 mt-0.5">
+              {f.siren && <span className="mr-3">SIREN {f.siren}</span>}
+              {f.type && <span className="text-slate-500 font-medium">{f.type}</span>}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 mt-1 text-xl leading-none">✕</button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* Statut global */}
+          <div className="flex items-center gap-3">
+            <Badge label={f.statut_label} color={f.statut_color} />
+            {f.date_depot && <span className="text-xs text-slate-400">Déposé le {new Date(f.date_depot).toLocaleDateString('fr-FR')}</span>}
+            {f.date_modif && <span className="text-xs text-slate-400">· Màj {new Date(f.date_modif).toLocaleDateString('fr-FR')}</span>}
+          </div>
+
+          {f.commentaire && (
+            <div className="bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-xs text-red-600">
+              {f.commentaire}
+            </div>
+          )}
+
+          {/* Historique étapes */}
+          {f.etapes?.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Historique de validation</p>
+              <div className="space-y-2">
+                {f.etapes.map((e, j) => (
+                  <div key={j} className="flex items-start gap-3">
+                    <div className="flex flex-col items-center mt-1">
+                      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${DOT_COLOR[e.statut_color] ?? 'bg-slate-300'}`} />
+                      {j < f.etapes.length - 1 && <div className="w-px flex-1 bg-slate-200 mt-1 min-h-[16px]" />}
+                    </div>
+                    <div className="pb-2">
+                      <p className="text-sm font-medium text-slate-700">{e.organisme || `Étape ${e.numero}`}</p>
+                      <p className={`text-xs mt-0.5 font-medium ${
+                        e.statut_color === 'green' ? 'text-green-600' :
+                        e.statut_color === 'red'   ? 'text-red-500' :
+                        e.statut_color === 'amber' ? 'text-amber-600' : 'text-slate-400'
+                      }`}>{e.statut_label}</p>
+                      {e.date && <p className="text-xs text-slate-400">{new Date(e.date).toLocaleDateString('fr-FR')}</p>}
+                      {e.motif_rejet && <p className="text-xs text-red-400 italic mt-0.5">{e.motif_rejet}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Lien de suivi client */}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Lien de suivi client</p>
+            <div className="flex gap-2">
+              <input readOnly value={lienSuivi} className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 text-slate-600 truncate" />
+              <button onClick={copier} className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${copied ? 'bg-green-500 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}>
+                {copied ? '✓ Copié' : 'Copier'}
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mt-1.5">Ce lien permet au client de suivre l'avancement sans se connecter.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function InpiPage() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [search, setSearch]   = useState('');
   const [filtre, setFiltre]   = useState('tous');
+  const [fiche, setFiche]     = useState(null);
 
   async function load() {
     setLoading(true); setError(null);
@@ -142,49 +244,42 @@ export default function InpiPage() {
         {(!loading || data) && !error && (
           <div className="space-y-2">
             {filtered.length === 0 && <p className="text-center text-slate-400 py-10 text-sm">Aucun résultat</p>}
-            {filtered.map((f, i) => (
-              <div key={f.id ?? i} className="bg-white border border-slate-100 rounded-2xl px-4 py-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-800 truncate">{f.denomination || '—'}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {f.siren && <span className="mr-3">SIREN {f.siren}</span>}
-                      {f.type && <span className="mr-3 font-medium text-slate-500">{f.type}</span>}
-                      {f.date_depot && <span>{new Date(f.date_depot).toLocaleDateString('fr-FR')}</span>}
-                    </p>
-                    {f.commentaire && <p className="text-xs text-red-400 mt-1 italic truncate">{f.commentaire}</p>}
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Badge label={f.statut_label} color={f.statut_color} />
+            {filtered.map((f, i) => {
+              const derniereEtape = f.etapes?.length > 0 ? f.etapes[f.etapes.length - 1] : null;
+              return (
+                <div key={f.id ?? i}
+                  className="bg-white border border-slate-100 rounded-2xl px-4 py-3 cursor-pointer hover:border-orange-200 hover:shadow-sm transition-all"
+                  onClick={() => setFiche(f)}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-800 truncate">{f.denomination || '—'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {f.siren && <span className="mr-3">SIREN {f.siren}</span>}
+                        {f.type && <span className="mr-3 font-medium text-slate-500">{f.type}</span>}
+                        {f.date_depot && <span>{new Date(f.date_depot).toLocaleDateString('fr-FR')}</span>}
+                      </p>
+                      {f.commentaire && <p className="text-xs text-red-400 mt-1 italic truncate">{f.commentaire}</p>}
+                      {derniereEtape && (
+                        <div className="mt-1.5">
+                          <EtapeTag e={derniereEtape} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                      <Badge label={f.statut_label} color={f.statut_color} />
+                      {f.etapes?.length > 1 && (
+                        <span className="text-xs text-slate-400">{f.etapes.length} étapes</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                {f.etapes?.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {f.etapes.map((e, j) => (
-                      <div key={j} className="flex items-center gap-1.5 text-xs bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                          e.statut_color === 'green'  ? 'bg-green-500' :
-                          e.statut_color === 'red'    ? 'bg-red-500' :
-                          e.statut_color === 'amber'  ? 'bg-amber-500' :
-                          e.statut_color === 'blue'   ? 'bg-blue-400' : 'bg-slate-300'
-                        }`} />
-                        <span className="text-slate-500">{e.organisme || `Étape ${e.numero}`}</span>
-                        <span className="text-slate-400">·</span>
-                        <span className={`font-medium ${
-                          e.statut_color === 'green' ? 'text-green-600' :
-                          e.statut_color === 'red'   ? 'text-red-500' :
-                          e.statut_color === 'amber' ? 'text-amber-600' : 'text-slate-500'
-                        }`}>{e.statut_label}</span>
-                        {e.motif_rejet && <span className="text-red-400 italic ml-1">— {e.motif_rejet}</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
     </div>
+
+    {fiche && <FicheModal f={fiche} onClose={() => setFiche(null)} />}
   );
 }
