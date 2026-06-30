@@ -698,16 +698,10 @@ export default function Dashboard() {
                   ))}
                 </div>
                 {(settings.signature_mode ?? 'interne') === 'docusign' && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-1">
-                    <p className="font-semibold">Connexion Gmail requise</p>
-                    <p>Les emails DocuSign reçus sur votre boîte Gmail seront automatiquement détectés pour mettre à jour les statuts de signature.</p>
-                    {settings.gmail_email ? (
-                      <p className="text-green-700 font-medium mt-1">✅ Gmail connecté : {settings.gmail_email}</p>
-                    ) : (
-                      <a href="/api/gmail-auth" className="inline-block mt-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                        Connecter Gmail
-                      </a>
-                    )}
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+                    <p className="font-semibold mb-1">Surveillance Gmail active</p>
+                    <p>Les emails DocuSign reçus sur <strong>{settings.gmail_user || 'votre Gmail'}</strong> seront détectés automatiquement toutes les 30 minutes pour mettre à jour les statuts de signature.</p>
+                    {!settings.gmail_user && <p className="text-amber-700 mt-1 font-medium">⚠️ Configurez d'abord votre adresse Gmail ci-dessous.</p>}
                   </div>
                 )}
               </div>
