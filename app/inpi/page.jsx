@@ -167,6 +167,7 @@ export default function InpiPage() {
   });
 
   return (
+    <>
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="px-6 h-16 flex items-center justify-between">
@@ -281,5 +282,6 @@ export default function InpiPage() {
     </div>
 
     {fiche && <FicheModal f={fiche} onClose={() => setFiche(null)} />}
+    </>
   );
 }
