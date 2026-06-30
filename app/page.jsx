@@ -69,6 +69,50 @@ function Badge({ label, color = 'slate', dot = false }) {
   );
 }
 
+// ── INPI Connection Status ────────────────────────────────────────────────────
+function InpiConnectionStatus() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(null);
+
+  async function check() {
+    setLoading(true); setResult(null);
+    const r = await fetch('/api/inpi-check').then(x => x.json()).catch(e => ({ ok: false, message: e.message }));
+    setResult(r); setLoading(false);
+  }
+
+  const statusColor = result?.ok
+    ? 'bg-green-50 border-green-200 text-green-800'
+    : result
+    ? 'bg-red-50 border-red-200 text-red-700'
+    : 'bg-slate-50 border-slate-200 text-slate-600';
+
+  const statusIcon = result?.ok ? '✅' : result ? '❌' : null;
+  const statusLabel = result?.ok
+    ? `Connecté${result.expiry ? ` — expire le ${result.expiry}` : ''}`
+    : result?.message ?? null;
+
+  return (
+    <div className="space-y-2">
+      <button onClick={check} disabled={loading}
+        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50">
+        {loading ? 'Vérification…' : 'Tester la connexion INPI'}
+      </button>
+      {result !== null && (
+        <div className={`rounded-lg p-2 text-xs border ${statusColor}`}>
+          {statusIcon && <span className="mr-1">{statusIcon}</span>}
+          {statusLabel}
+          {!result.ok && result.hasRefresh && (
+            <p className="mt-1 text-amber-700">Un REFRESH_TOKEN est disponible — la reconnexion automatique devrait fonctionner au prochain CRON.</p>
+          )}
+          {!result.ok && !result.hasRefresh && (
+            <p className="mt-1 font-semibold">Renseignez le REFRESH_TOKEN ci-dessous pour rétablir la connexion.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Spinner ───────────────────────────────────────────────────────────────────
 function TestDocuSign({ onSynced }) {
   const [loading, setLoading] = useState(false);
@@ -776,16 +820,7 @@ export default function Dashboard() {
               {/* INPI */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI — Guichet Unique</h3>
-                {settings.inpi_email && settings.inpi_password ? (
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800 flex items-start gap-2">
-                    <span className="text-base leading-none">✅</span>
-                    <p className="font-semibold">Connexion automatique active — token renouvelé toutes les heures</p>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                    <p className="font-semibold">Renseignez vos identifiants pour activer la connexion automatique</p>
-                  </div>
-                )}
+                <InpiConnectionStatus />
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Email INPI</label>
                   <input type="email" value={settings.inpi_email || ''} onChange={e => setSettings(s => ({ ...s, inpi_email: e.target.value }))}
@@ -797,6 +832,15 @@ export default function Dashboard() {
                   <input type="password" value={settings.inpi_password || ''} onChange={e => setSettings(s => ({ ...s, inpi_password: e.target.value }))}
                     placeholder="••••••••"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    REFRESH_TOKEN <span className="text-slate-400 font-normal">(si renouvellement automatique échoue)</span>
+                  </label>
+                  <p className="text-xs text-slate-400 mb-1">F12 → Application → Cookies → guichet-unique.inpi.fr → <strong>REFRESH_TOKEN</strong></p>
+                  <input type="password" value={settings.inpi_refresh_token || ''} onChange={e => setSettings(s => ({ ...s, inpi_refresh_token: e.target.value }))}
+                    placeholder="5ba23bb7..."
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
               </div>
 
