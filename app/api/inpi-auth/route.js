@@ -196,9 +196,10 @@ function buildList(raw) {
     statut:       f.status ?? f.statut,
     statut_label: labelStatut(f.status ?? f.statut),
     statut_color: colorStatut(f.status ?? f.statut),
-    date_depot:   f.createdAt ?? f.dateDepot,
-    date_modif:   f.updatedAt ?? f.dateModification,
+    date_depot:   f.createdAt ?? f.created ?? f.dateDepot,
+    date_modif:   f.updatedAt ?? f.statusDate ?? f.dateModification,
     commentaire:  f.commentaire ?? f.motifRejet ?? null,
+    _debug_validations: f.validationsRequests ?? null,
   }));
 }
 
