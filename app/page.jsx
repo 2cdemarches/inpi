@@ -69,57 +69,6 @@ function Badge({ label, color = 'slate', dot = false }) {
   );
 }
 
-// ── INPI Connection Status ────────────────────────────────────────────────────
-function InpiConnectionStatus({ onRefreshed }) {
-  const [loading, setLoading]     = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [result, setResult]       = useState(null);
-
-  async function check() {
-    setLoading(true); setResult(null);
-    const r = await fetch('/api/inpi-check').then(x => x.json()).catch(e => ({ ok: false, message: e.message }));
-    setResult(r); setLoading(false);
-  }
-  async function forceRefresh() {
-    setRefreshing(true);
-    const r = await fetch('/api/inpi-check', { method: 'POST' }).then(x => x.json()).catch(e => ({ ok: false, message: e.message }));
-    setResult(r); setRefreshing(false);
-    if (r.ok) onRefreshed?.();
-  }
-
-  const isExpired = result && !result.ok && ['expired', 'invalid', 'refresh_failed'].includes(result.status);
-
-  return (
-    <div className="space-y-2">
-      <div className="flex gap-2 flex-wrap">
-        <button onClick={check} disabled={loading || refreshing}
-          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50">
-          {loading ? 'Vérification…' : 'Tester la connexion INPI'}
-        </button>
-        {isExpired && (
-          <button onClick={forceRefresh} disabled={loading || refreshing}
-            className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 disabled:opacity-50">
-            {refreshing ? 'Renouvellement…' : 'Renouveler maintenant'}
-          </button>
-        )}
-      </div>
-      {result !== null && (
-        <div className={`rounded-lg p-2 text-xs border ${result.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-700'}`}>
-          {result.ok
-            ? `Connecté${result.expiry ? ` — expire le ${result.expiry}` : ''}${result.status === 'refreshed' ? ' (token renouvelé)' : ''}`
-            : result.message}
-          {!result.ok && result.hasRefresh && result.status === 'expired' && (
-            <p className="mt-1 text-amber-700">Cliquez "Renouveler maintenant" pour rétablir la connexion immédiatement.</p>
-          )}
-          {!result.ok && !result.hasRefresh && (
-            <p className="mt-1 font-semibold">Renseignez le REFRESH_TOKEN ci-dessous pour rétablir la connexion.</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Spinner ───────────────────────────────────────────────────────────────────
 function TestDocuSign({ onSynced }) {
   const [loading, setLoading] = useState(false);
@@ -293,24 +242,19 @@ export default function Dashboard() {
   useEffect(() => { loadSignRequests(); }, [loadSignRequests]);
 
   // Chargement INPI unique pour tous les clients
-  const [inpiError, setInpiError] = useState(null);
-  const loadInpi = useCallback(() => {
-    setInpiLoading(true); setInpiError(null);
+  useEffect(() => {
+    setInpiLoading(true);
     fetch('/api/inpi-auth')
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
           setInpiData(d);
-          setInpiError(null);
           try { localStorage.setItem('inpi_cache', JSON.stringify(d)); } catch {}
-        } else {
-          setInpiError(d.error || 'Erreur INPI');
         }
       })
-      .catch(e => setInpiError(e.message))
+      .catch(() => {})
       .finally(() => setInpiLoading(false));
   }, []);
-  useEffect(() => { loadInpi(); }, [loadInpi]);
 
   const loadModeles = useCallback(async () => {
     const res = await fetch('/api/modeles');
@@ -482,20 +426,12 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-2">
             <a href="/signature" className="px-3 py-2 text-sm text-blue-600 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 font-medium">✍️ Signatures</a>
-            {inpiError && (
-              <span className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-100 flex items-center gap-1">
-                ⚠️ {inpiError}
-                <button onClick={loadInpi} className="underline ml-1 hover:text-red-800">Réessayer</button>
-              </span>
-            )}
             <button
               onClick={syncInpi}
               disabled={syncing || inpiLoading || !inpiData?.formalites?.length}
-              title={inpiError ? inpiError : !inpiData ? 'Chargement…' : `${inpiData.formalites.length} formalités disponibles`}
+              title={!inpiData ? 'Données INPI non chargées' : `${inpiData.formalites.length} formalités disponibles`}
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-xl hover:bg-orange-100 font-medium disabled:opacity-40">
-              {inpiLoading
-                ? <><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Chargement…</>
-                : syncing
+              {syncing
                 ? <><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Sync…</>
                 : '🏛️ Sync INPI'}
             </button>
@@ -840,7 +776,16 @@ export default function Dashboard() {
               {/* INPI */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI — Guichet Unique</h3>
-                <InpiConnectionStatus onRefreshed={loadInpi} />
+                {settings.inpi_email && settings.inpi_password ? (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800 flex items-start gap-2">
+                    <span className="text-base leading-none">✅</span>
+                    <p className="font-semibold">Connexion automatique active — token renouvelé toutes les heures</p>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                    <p className="font-semibold">Renseignez vos identifiants pour activer la connexion automatique</p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Email INPI</label>
                   <input type="email" value={settings.inpi_email || ''} onChange={e => setSettings(s => ({ ...s, inpi_email: e.target.value }))}
@@ -852,15 +797,6 @@ export default function Dashboard() {
                   <input type="password" value={settings.inpi_password || ''} onChange={e => setSettings(s => ({ ...s, inpi_password: e.target.value }))}
                     placeholder="••••••••"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">
-                    REFRESH_TOKEN <span className="text-slate-400 font-normal">(si renouvellement automatique échoue)</span>
-                  </label>
-                  <p className="text-xs text-slate-400 mb-1">F12 → Application → Cookies → guichet-unique.inpi.fr → <strong>REFRESH_TOKEN</strong></p>
-                  <input type="password" value={settings.inpi_refresh_token || ''} onChange={e => setSettings(s => ({ ...s, inpi_refresh_token: e.target.value }))}
-                    placeholder="5ba23bb7..."
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
               </div>
 
