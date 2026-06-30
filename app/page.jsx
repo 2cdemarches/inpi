@@ -114,8 +114,9 @@ function TestDocuSign() {
           ) : (
             <>
               <p className="font-semibold">✅ Sync terminée — {result.processed} traité(s)</p>
-              {result.signed > 0 && <p>✍️ {result.signed} signé(s)</p>}
-              {result.sent   > 0 && <p>📤 {result.sent} envoi(s) détecté(s)</p>}
+              {result.signed  > 0 && <p>✍️ {result.signed} signé(s)</p>}
+              {result.sent    > 0 && <p>📤 {result.sent} envoi(s) détecté(s)</p>}
+              {result.skipped > 0 && <p className="text-slate-500">⏭️ {result.skipped} déjà à jour</p>}
               {result.not_found?.length > 0 && <p className="text-amber-700">⚠️ Clients introuvables : {result.not_found.join(', ')}</p>}
               {result.errors?.length > 0 && <p className="text-red-700">❌ Erreurs : {result.errors.join(' | ')}</p>}
             </>

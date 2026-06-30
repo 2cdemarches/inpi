@@ -67,15 +67,16 @@ export async function POST() {
     await imap.connect();
     await imap.mailboxOpen('INBOX');
 
-    const msgs = await imap.search({ from: 'dse@eumail.docusign.net', seen: false });
-    const result = { processed: 0, signed: 0, sent: 0, not_found: [], errors: [] };
+    // Sync manuelle : on traite les 50 derniers emails DocuSign (lus ou non)
+    const allMsgs = await imap.search({ from: 'dse@eumail.docusign.net' });
+    const msgs = allMsgs.slice(-50);
+    const result = { processed: 0, signed: 0, sent: 0, skipped: 0, not_found: [], errors: [] };
 
     for await (const msg of imap.fetch(msgs, { envelope: true, flags: true })) {
       const subject = msg.envelope?.subject ?? '';
       const date    = msg.envelope?.date ?? new Date();
       const parsed  = parseSubject(subject);
 
-      await imap.messageFlagsAdd(msg.seq, ['\\Seen']);
       if (!parsed) continue;
 
       const denom = parsed.denomination.toLowerCase();
@@ -90,20 +91,20 @@ export async function POST() {
       const { data: existing } = await sb.from('signature_requests').select('id, status').eq('client_id', match.id).order('created_at', { ascending: false }).limit(1).single();
 
       if (parsed.signed) {
+        if (existing?.status === 'signed') { result.skipped++; continue; } // déjà à jour
         if (existing?.id) {
           const { error: e } = await sb.from('signature_requests').update({ status: 'signed', signed_at: dateIso }).eq('id', existing.id);
-          if (e) { result.errors.push(`update signed ${match.id}: ${e.message}`); continue; }
+          if (e) { result.errors.push(`${match.denomination || match.id}: ${e.message}`); continue; }
         } else {
           const { error: e } = await sb.from('signature_requests').insert({ client_id: match.id, status: 'signed', signed_at: dateIso, expires_at: dateIso, documents: [], created_at: dateIso });
-          if (e) { result.errors.push(`insert signed ${match.id}: ${e.message}`); continue; }
+          if (e) { result.errors.push(`${match.denomination || match.id}: ${e.message}`); continue; }
         }
         result.signed++;
       } else {
-        if (!existing || existing.status === 'signed') {
-          const { error: e } = await sb.from('signature_requests').insert({ client_id: match.id, status: 'pending', expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), documents: [], created_at: dateIso });
-          if (e) { result.errors.push(`insert pending ${match.id}: ${e.message}`); continue; }
-          result.sent++;
-        }
+        if (existing && existing.status !== 'signed') { result.skipped++; continue; } // pending déjà présent
+        const { error: e } = await sb.from('signature_requests').insert({ client_id: match.id, status: 'pending', expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), documents: [], created_at: dateIso });
+        if (e) { result.errors.push(`${match.denomination || match.id}: ${e.message}`); continue; }
+        result.sent++;
       }
       result.processed++;
     }
