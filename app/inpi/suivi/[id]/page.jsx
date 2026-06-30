@@ -59,22 +59,11 @@ export default function SuiviPage() {
         const statut = data.status ?? data.statut;
         const siren  = data.siren;
         if (STATUTS_SIGNES.includes(statut) && siren) {
-          fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${siren}&page=1&per_page=1`)
-            .then(r => r.json())
-            .then(res => {
-              const ent = res.results?.[0];
-              if (ent) {
-                setRegistre({
-                  found: true,
-                  url: `https://annuaire-entreprises.data.gouv.fr/entreprise/${siren}`,
-                  nom: ent.nom_complet ?? data.companyName,
-                  siren,
-                });
-              } else {
-                setRegistre({ found: false, siren });
-              }
-            })
-            .catch(() => setRegistre({ found: false, siren }));
+          setRegistre({
+            url: `https://www.inpi.fr/fiche-entreprise?q=${siren}`,
+            validated: STATUTS_VALIDES.includes(statut),
+            siren,
+          });
         }
       })
       .catch(() => setError('Erreur de chargement'))
@@ -164,44 +153,38 @@ export default function SuiviPage() {
           </div>
         )}
 
-        {/* Bloc registre INPI */}
-        {registre && registre.found && (
-          <div className="bg-green-50 border border-green-200 rounded-2xl p-5">
+        {/* Bloc fiche INPI */}
+        {registre && (
+          <div className={`border rounded-2xl p-5 ${registre.validated ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${registre.validated ? 'bg-green-100' : 'bg-blue-100'}`}>
+                <svg className={`w-5 h-5 ${registre.validated ? 'text-green-600' : 'text-blue-600'}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d={registre.validated
+                    ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    : "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"}
+                  />
                 </svg>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-green-800">Dossier publié au registre</p>
-                <p className="text-xs text-green-600 mt-0.5">L'entreprise est bien inscrite au Registre National des Entreprises (RNE).</p>
+                <p className={`text-sm font-semibold ${registre.validated ? 'text-green-800' : 'text-blue-800'}`}>
+                  {registre.validated ? 'Dossier validé par l\'INPI' : 'Dossier signé — en cours de traitement'}
+                </p>
+                <p className={`text-xs mt-0.5 ${registre.validated ? 'text-green-600' : 'text-blue-600'}`}>
+                  {registre.validated
+                    ? 'Votre formalité a été validée. Retrouvez votre fiche sur le site INPI.'
+                    : 'Votre dossier est signé et en cours de traitement par l\'INPI.'}
+                </p>
                 <a
                   href={registre.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors"
+                  className={`inline-flex items-center gap-1.5 mt-3 px-4 py-2 text-white text-xs font-medium rounded-lg transition-colors ${registre.validated ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                 >
-                  Voir la fiche sur l'annuaire
+                  Voir la fiche sur l'INPI
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                   </svg>
                 </a>
-              </div>
-            </div>
-          </div>
-        )}
-        {registre && !registre.found && STATUTS_VALIDES.includes(f?.status ?? f?.statut) && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-amber-800">Publication en cours</p>
-                <p className="text-xs text-amber-600 mt-0.5">Votre dossier a été validé. La publication au registre peut prendre quelques jours.</p>
               </div>
             </div>
           </div>
