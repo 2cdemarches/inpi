@@ -91,11 +91,26 @@ function FicheModal({ f, onClose }) {
 
         <div className="px-5 py-4 space-y-4">
           {/* Statut global */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Badge label={f.statut_label} color={f.statut_color} />
             {f.date_depot && <span className="text-xs text-slate-400">Déposé le {new Date(f.date_depot).toLocaleDateString('fr-FR')}</span>}
             {f.date_modif && <span className="text-xs text-slate-400">· Màj {new Date(f.date_modif).toLocaleDateString('fr-FR')}</span>}
           </div>
+
+          {/* Lien dossier INPI Guichet Unique */}
+          {['SIGNED','AMENDMENT_SIGNED','VALIDATED','VALIDATED_BO_AMENDMENT_SIGNED','VALIDATED_BO_AMENDMENT_SIGNATURE_PENDING'].includes(f.statut) && (
+            <a
+              href={`https://guichet-unique.inpi.fr/guichet/mes-formalites/formalite-detail/${f.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 text-sm font-medium rounded-xl transition-colors w-full justify-center"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+              </svg>
+              Voir le dossier sur le Guichet Unique INPI
+            </a>
+          )}
 
           {f.commentaire && (
             <div className="bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-xs text-red-600">
