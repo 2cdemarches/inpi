@@ -70,6 +70,43 @@ function Badge({ label, color = 'slate', dot = false }) {
 }
 
 // ── Spinner ───────────────────────────────────────────────────────────────────
+function TestDocuSign() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(null);
+  async function run() {
+    setLoading(true); setResult(null);
+    const r = await fetch('/api/cron/docusign-sync/test').then(x => x.json());
+    setResult(r); setLoading(false);
+  }
+  return (
+    <div className="space-y-2">
+      <button onClick={run} disabled={loading}
+        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
+        {loading ? 'Connexion…' : '🔍 Tester la connexion'}
+      </button>
+      {result && (
+        <div className={`rounded-lg p-2 text-xs ${result.ok ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+          {result.ok ? (
+            <>
+              <p className="font-semibold">✅ Connecté via {result.host}</p>
+              <p>{result.total_docusign} email(s) DocuSign trouvés au total</p>
+              {result.derniers?.length > 0 && (
+                <ul className="mt-1 space-y-0.5">
+                  {result.derniers.map((m, i) => (
+                    <li key={i} className="truncate">
+                      {m.seen ? '📭' : '📬'} <span className="font-medium">{m.subject}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : <p>❌ {result.error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Spin() {
   return (
     <svg className="w-3.5 h-3.5 animate-spin text-slate-300" fill="none" viewBox="0 0 24 24">
@@ -696,10 +733,13 @@ export default function Dashboard() {
                   ))}
                 </div>
                 {(settings.signature_mode ?? 'interne') === 'docusign' && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-                    <p className="font-semibold mb-1">Surveillance boîte mail active</p>
-                    <p>Les emails DocuSign reçus sur <strong>{settings.gmail_user || 'votre adresse email'}</strong> seront détectés automatiquement toutes les 30 minutes. Compatible Gmail, Ionos, Outlook, Yahoo.</p>
-                    {!settings.gmail_user && <p className="text-amber-700 mt-1 font-medium">⚠️ Configurez d'abord votre adresse email ci-dessous.</p>}
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-2">
+                    <p className="font-semibold">Surveillance boîte mail active</p>
+                    <p>Les emails DocuSign reçus sur <strong>{settings.gmail_user || 'votre adresse email'}</strong> seront détectés automatiquement toutes les 30 minutes.</p>
+                    {!settings.gmail_user
+                      ? <p className="text-amber-700 font-medium">⚠️ Configurez d'abord votre adresse email ci-dessous.</p>
+                      : <TestDocuSign />
+                    }
                   </div>
                 )}
               </div>
