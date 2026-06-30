@@ -800,7 +800,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">
-                    Token INPI <span className="text-slate-400 font-normal">(coller manuellement si connexion auto échoue)</span>
+                    Token INPI <span className="text-slate-400 font-normal">(coller manuellement si besoin)</span>
                   </label>
                   <textarea
                     value={settings.inpi_bearer || ''}
@@ -809,6 +809,17 @@ export default function Dashboard() {
                     rows={3}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
                   <p className="text-xs text-slate-400 mt-1">F12 → Application → Cookies → guichet-unique.inpi.fr → <strong>BEARER</strong></p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Token applicatif <span className="text-slate-400 font-normal">(pour l'extension Chrome)</span></label>
+                  <div className="flex gap-2">
+                    <input readOnly value={settings.bookmarklet_token || ''}
+                      className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono bg-slate-50 text-slate-500" />
+                    <button type="button" onClick={() => { navigator.clipboard.writeText(settings.bookmarklet_token || ''); }}
+                      className="px-3 py-2 text-xs bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-slate-600 font-medium">
+                      Copier
+                    </button>
+                  </div>
                 </div>
               </div>
 
