@@ -31,7 +31,7 @@ export async function POST(req) {
 
     if (fetchErr) return NextResponse.json({ ok: false, error: fetchErr.message }, { status: 500 });
 
-    const results = { created: 0, linked: 0, updated: 0, skipped: 0 };
+    const results = { created: 0, linked: 0, updated: 0, skipped: 0, errors: [] };
 
     for (const f of formalites) {
       const fId   = String(f.id ?? '');
@@ -75,17 +75,26 @@ export async function POST(req) {
       const typeMap = { 'Création': 'SASU', 'Modification': 'SASU', 'Cessation': 'SASU' };
       const { error: insertErr } = await sb.from('clients').insert({
         user_id:            user.id,
-        denomination:       denom || null,
+        denomination:       denom || '',
         siren:              f.siren || null,
         inpi_formalite_id:  fId || null,
         type_societe:       typeMap[f.type] || 'SASU',
+        // Champs obligatoires en DB — vides pour les imports INPI
+        prenom:             '',
+        nom:                '',
+        civilite:           'Monsieur',
+        nationalite:        'Française',
+        adresse:            '',
+        siege_social:       '',
+        capital:            0,
+        nb_actions:         0,
         statuts_manuels:    [],
         created_at:         new Date().toISOString(),
         updated_at:         new Date().toISOString(),
       });
 
       if (insertErr) {
-        console.error('sync-inpi insert error', insertErr.message, f.denomination);
+        results.errors.push(`${denom}: ${insertErr.message}`);
         results.skipped++;
       } else {
         results.created++;
