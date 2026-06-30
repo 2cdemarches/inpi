@@ -109,7 +109,10 @@ export async function GET() {
       }
       bearer = renewed.bearer;
       await storeBearer(user.id, bearer, renewed.refresh);
-      await sb.from('settings').update({ inpi_bearer: bearer }).eq('user_id', user.id);
+      await sb.from('settings').update({
+        inpi_bearer: bearer,
+        ...(renewed.refresh ? { inpi_refresh_token: renewed.refresh } : {}),
+      }).eq('user_id', user.id);
     }
 
     // 3. Récupérer les formalités
@@ -135,7 +138,10 @@ export async function GET() {
         if (!renewed) return NextResponse.json({ ok: false, error: 'TOKEN_EXPIRED' }, { status: 401 });
         bearer = renewed.bearer;
         await storeBearer(user.id, bearer, renewed.refresh);
-        await sb.from('settings').update({ inpi_bearer: bearer }).eq('user_id', user.id);
+        await sb.from('settings').update({
+          inpi_bearer: bearer,
+          ...(renewed.refresh ? { inpi_refresh_token: renewed.refresh } : {}),
+        }).eq('user_id', user.id);
         continue; // retenter la même page
       }
 
