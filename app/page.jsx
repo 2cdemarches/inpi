@@ -108,36 +108,27 @@ function DsStatus({ envelopeId }) {
   return <Badge label={DS_LABELS[status] || status} color={DS_COLORS[status] || 'slate'} dot />;
 }
 
-// ── Composant statut INPI par client ─────────────────────────────────────────
-function InpiStatus({ denomination }) {
-  const cacheKey = `inpi_status_${denomination}`;
-  const [status, setStatus] = useState(() => {
-    try { const c = localStorage.getItem(cacheKey); return c ? JSON.parse(c) : null; } catch { return null; }
-  });
-  const [loading, setLoading] = useState(false);
+// ── Composant statut INPI (formalite passée en prop depuis le Dashboard) ─────
+function InpiStatus({ formalite, loading }) {
+  if (loading) return <span className="flex items-center gap-1 text-xs text-slate-300 w-20"><Spin /> INPI…</span>;
+  if (!formalite) return <Badge label="—" color="slate" />;
+  return <Badge label={formalite.statut_label} color={formalite.statut_color} dot />;
+}
 
-  useEffect(() => {
-    if (!denomination) return;
-    setLoading(true);
-    fetch('/api/inpi-auth')
-      .then(r => r.json())
-      .then(d => {
-        const match = (d.formalites || []).find(f =>
-          f.denomination?.toLowerCase() === denomination.toLowerCase()
-        );
-        if (match) {
-          setStatus(match);
-          try { localStorage.setItem(cacheKey, JSON.stringify(match)); } catch {}
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [denomination]);
-
-  if (!denomination) return <Badge label="—" color="slate" />;
-  if (loading && !status) return <span className="flex items-center gap-1 text-xs text-slate-300 w-20"><Spin /> INPI…</span>;
-  if (!status) return <Badge label="—" color="slate" />;
-  return <Badge label={status.statut_label} color={status.statut_color} dot />;
+// ── Matching client ↔ formalité INPI ─────────────────────────────────────────
+function matchFormalite(client, formalites = []) {
+  if (!formalites.length) return null;
+  // 1. Correspondance exacte par dénomination
+  const exact = formalites.find(f =>
+    f.denomination?.toLowerCase().trim() === client.denomination?.toLowerCase().trim()
+  );
+  if (exact) return exact;
+  // 2. Correspondance partielle (le nom INPI contient la dénomination ou vice-versa)
+  return formalites.find(f =>
+    f.denomination && client.denomination &&
+    (f.denomination.toLowerCase().includes(client.denomination.toLowerCase()) ||
+     client.denomination.toLowerCase().includes(f.denomination.toLowerCase()))
+  ) || null;
 }
 
 // ── Page principale ───────────────────────────────────────────────────────────
@@ -146,6 +137,10 @@ export default function Dashboard() {
     try { const c = localStorage.getItem('clients_cache'); return c ? JSON.parse(c) : []; } catch { return []; }
   });
   const [loading, setLoading]       = useState(true);
+  const [inpiData, setInpiData]     = useState(() => {
+    try { const c = localStorage.getItem('inpi_cache'); return c ? JSON.parse(c) : null; } catch { return null; }
+  });
+  const [inpiLoading, setInpiLoading] = useState(true);
   const [search, setSearch]         = useState('');
   const [filterType, setFilterType] = useState('tous');
   const [showForm, setShowForm]     = useState(false);
@@ -177,6 +172,21 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetch('/api/sign').then(r => r.json()).then(d => setSignRequests(d.requests || [])).catch(() => {});
+  }, []);
+
+  // Chargement INPI unique pour tous les clients
+  useEffect(() => {
+    setInpiLoading(true);
+    fetch('/api/inpi-auth')
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          setInpiData(d);
+          try { localStorage.setItem('inpi_cache', JSON.stringify(d)); } catch {}
+        }
+      })
+      .catch(() => {})
+      .finally(() => setInpiLoading(false));
   }, []);
 
   const loadModeles = useCallback(async () => {
@@ -370,7 +380,7 @@ export default function Dashboard() {
                   {/* Grille statuts */}
                   <div className="flex-shrink-0 flex items-center gap-2">
                     <Badge label={client.type_societe} color="purple" />
-                    <InpiStatus denomination={client.denomination} />
+                    <InpiStatus formalite={matchFormalite(client, inpiData?.formalites)} loading={inpiLoading && !inpiData} />
                     {(() => {
                       const reqs = signRequests.filter(r => r.client_id === client.id);
                       const signed  = reqs.filter(r => r.status === 'signed');
@@ -410,7 +420,7 @@ export default function Dashboard() {
               {/* Statuts en évidence */}
               <div className="grid grid-cols-2 gap-3">
                 <StatusCard icon="🏛️" title="INPI" color="orange">
-                  <InpiStatus denomination={selected.denomination} />
+                  <InpiStatus formalite={matchFormalite(selected, inpiData?.formalites)} loading={inpiLoading && !inpiData} />
                 </StatusCard>
                 <StatusCard icon="📋" title="Suivi" color="indigo">
                   {(selected.statuts_manuels || []).length > 0
@@ -418,6 +428,15 @@ export default function Dashboard() {
                     : <span className="text-xs text-slate-400">—</span>}
                 </StatusCard>
               </div>
+
+              {/* Détail formalité INPI */}
+              <InpiFormalitePanel
+                formalite={matchFormalite(selected, inpiData?.formalites)}
+                loading={inpiLoading && !inpiData}
+                allFormalites={inpiData?.formalites || []}
+                clientId={selected.id}
+                denomination={selected.denomination}
+              />
 
               {/* Infos président */}
               <Section title="Président / Associé unique">
@@ -1064,6 +1083,115 @@ function BookmarkletButton({ token }) {
         <a href="https://guichet-unique.inpi.fr" target="_blank" className="underline">guichet-unique.inpi.fr</a>
         {' '}et cliquez sur ce favori.
       </p>
+    </div>
+  );
+}
+
+const DOT_INPI = { green: 'bg-green-500', red: 'bg-red-500', amber: 'bg-amber-500', blue: 'bg-blue-500', slate: 'bg-slate-400' };
+
+function InpiFormalitePanel({ formalite, loading, allFormalites, clientId, denomination }) {
+  const [override, setOverride] = useState(null);
+  const f = override || formalite;
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-slate-400 flex items-center gap-2">
+        <Spin /> Chargement INPI…
+      </div>
+    );
+  }
+
+  if (!f) {
+    // Aucune formalité trouvée — proposer une sélection manuelle
+    return (
+      <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-2">
+        <p className="text-xs text-amber-700 font-medium">Aucune formalité INPI trouvée pour « {denomination} »</p>
+        {allFormalites.length > 0 && (
+          <select
+            className="w-full border border-amber-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+            defaultValue=""
+            onChange={e => {
+              const found = allFormalites.find(x => x.id === e.target.value);
+              setOverride(found || null);
+            }}
+          >
+            <option value="">— Lier manuellement une formalité —</option>
+            {allFormalites.map(x => (
+              <option key={x.id} value={x.id}>
+                {x.denomination} ({x.type} · {x.statut_label})
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-orange-100 bg-orange-50 p-3 space-y-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-xs font-semibold text-orange-800">🏛️ Formalité INPI</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          {f.type && <span className="text-xs text-slate-500 font-medium">{f.type}</span>}
+          <Badge label={f.statut_label} color={f.statut_color} dot />
+        </div>
+      </div>
+
+      {/* Dates */}
+      <div className="flex gap-4 text-xs text-slate-500">
+        {f.date_depot && <span>Déposé le <strong>{new Date(f.date_depot).toLocaleDateString('fr-FR')}</strong></span>}
+        {f.date_modif && <span>Mise à jour <strong>{new Date(f.date_modif).toLocaleDateString('fr-FR')}</strong></span>}
+      </div>
+
+      {/* Commentaire / motif rejet */}
+      {f.commentaire && (
+        <div className="bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5 text-xs text-red-600">
+          {f.commentaire}
+        </div>
+      )}
+
+      {/* Étapes */}
+      {f.etapes?.length > 0 && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-xs font-medium text-slate-500">Étapes de validation</p>
+          {f.etapes.map((e, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${DOT_INPI[e.statut_color] ?? 'bg-slate-300'}`} />
+              <div className="min-w-0">
+                <span className="text-xs text-slate-700 font-medium">{e.organisme || `Étape ${e.numero}`}</span>
+                <span className={`ml-2 text-xs font-medium ${
+                  e.statut_color === 'green' ? 'text-green-600' :
+                  e.statut_color === 'red'   ? 'text-red-500'   :
+                  e.statut_color === 'amber' ? 'text-amber-600' : 'text-slate-400'
+                }`}>{e.statut_label}</span>
+                {e.date && <span className="ml-2 text-xs text-slate-400">{new Date(e.date).toLocaleDateString('fr-FR')}</span>}
+                {e.motif_rejet && <p className="text-xs text-red-400 italic">{e.motif_rejet}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Option de changer la formalité liée */}
+      {allFormalites.length > 1 && (
+        <details className="pt-1">
+          <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">Changer la formalité liée…</summary>
+          <select
+            className="mt-1.5 w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+            value={override?.id || f.id || ''}
+            onChange={e => {
+              const found = allFormalites.find(x => x.id === e.target.value);
+              setOverride(found || null);
+            }}
+          >
+            {allFormalites.map(x => (
+              <option key={x.id} value={x.id}>
+                {x.denomination} ({x.type} · {x.statut_label})
+              </option>
+            ))}
+          </select>
+        </details>
+      )}
     </div>
   );
 }
