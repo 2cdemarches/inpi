@@ -55,8 +55,7 @@ export async function GET(req, { params }) {
 
   const { data: settings } = await sb.from('settings')
     .select('inpi_bearer, inpi_refresh_token, user_id')
-    .not('inpi_refresh_token', 'is', null)
-    .limit(1)
+    .eq('user_id', 'a18b292a-13b8-453b-9a94-b5b50f227c51')
     .single();
 
   if (!settings) return NextResponse.json({ error: 'Configuration INPI absente — aucun settings trouvé' }, { status: 503 });
