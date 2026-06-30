@@ -126,6 +126,7 @@ export async function GET() {
     ].map(s => `status%5B%5D=${s}`).join('&');
 
     let formalites = [];
+    let debugFirstRaw = null;
     for (let page = 1; page <= 20; page++) {
       const res = await fetch(
         `${GU}/api/formalities/dashboard-list?${ALL_STATUSES}&order%5Bcreated%5D=desc&page=${page}&itemsPerPage=50`,
@@ -148,6 +149,10 @@ export async function GET() {
       if (!res.ok) throw new Error(`GU API ${res.status}`);
 
       const data = await res.json();
+      if (!debugFirstRaw) {
+        const members = data?.['hydra:member'] ?? data?.member ?? data?.items ?? data?.data ?? [];
+        debugFirstRaw = members[0] ?? null;
+      }
       const items = buildList(data);
       formalites = formalites.concat(items);
       const total = data?.['hydra:totalItems'] ?? data?.totalItems ?? null;
@@ -155,7 +160,7 @@ export async function GET() {
       if (items.length < 50) break;
     }
 
-    return NextResponse.json({ ok: true, stats: buildStats(formalites), total: formalites.length, formalites });
+    return NextResponse.json({ ok: true, stats: buildStats(formalites), total: formalites.length, formalites, _debug_first_raw: debugFirstRaw });
 
   } catch (e) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
