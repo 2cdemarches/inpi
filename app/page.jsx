@@ -686,6 +686,32 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* Signature */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Signature électronique</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {[['interne', '✍️ Intégrée (logiciel)'], ['docusign', '📄 DocuSign']].map(([val, label]) => (
+                    <button key={val} onClick={() => setSettings(s => ({ ...s, signature_mode: val }))}
+                      className={`px-3 py-2.5 rounded-xl border text-sm font-medium transition-colors ${(settings.signature_mode ?? 'interne') === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {(settings.signature_mode ?? 'interne') === 'docusign' && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-1">
+                    <p className="font-semibold">Connexion Gmail requise</p>
+                    <p>Les emails DocuSign reçus sur votre boîte Gmail seront automatiquement détectés pour mettre à jour les statuts de signature.</p>
+                    {settings.gmail_email ? (
+                      <p className="text-green-700 font-medium mt-1">✅ Gmail connecté : {settings.gmail_email}</p>
+                    ) : (
+                      <a href="/api/gmail-auth" className="inline-block mt-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                        Connecter Gmail
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* INPI */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INPI — Guichet Unique</h3>
