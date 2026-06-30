@@ -59,9 +59,11 @@ export async function GET(req, { params }) {
     .limit(1)
     .single();
 
-  if (!settings) return NextResponse.json({ error: 'Configuration INPI absente' }, { status: 503 });
+  if (!settings) return NextResponse.json({ error: 'Configuration INPI absente — aucun settings trouvé' }, { status: 503 });
 
-  let bearer = jwtIsValid(settings.inpi_bearer) ? settings.inpi_bearer : null;
+  const rawBearer = settings.inpi_bearer;
+  const isValid = jwtIsValid(rawBearer);
+  let bearer = isValid ? rawBearer : null;
 
   if (!bearer && settings.inpi_refresh_token) {
     const renewed = await refreshBearer(settings.inpi_refresh_token);
@@ -74,7 +76,10 @@ export async function GET(req, { params }) {
     }
   }
 
-  if (!bearer) return NextResponse.json({ error: 'Token INPI expiré' }, { status: 503 });
+  if (!bearer) return NextResponse.json({
+    error: 'Token INPI expiré',
+    debug: { has_bearer: !!rawBearer, bearer_length: rawBearer?.length ?? 0, is_valid: isValid, has_refresh: !!settings.inpi_refresh_token }
+  }, { status: 503 });
 
   const res = await fetch(`${GU}/api/formalities/${id}`, {
     headers: {
