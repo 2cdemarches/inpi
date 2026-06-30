@@ -39,7 +39,7 @@ function EtapeTag({ e }) {
 
 function FicheModal({ f, onClose }) {
   const [copied, setCopied] = useState(false);
-  const lienSuivi = `${window.location.origin}/suivi/${f.id}`;
+  const lienSuivi = `${window.location.origin}/inpi/suivi/${f.id}`;
 
   function copier() {
     navigator.clipboard.writeText(lienSuivi).then(() => {
